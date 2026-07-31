@@ -11,6 +11,8 @@
  * printed in the same band.
  */
 
+import { readBandRemote } from './typhoon.js';
+
 const THAI_TITLES = ['นางสาว', 'เด็กชาย', 'เด็กหญิง', 'นาย', 'นาง', 'ด.ช.', 'ด.ญ.'];
 
 let servicePromise = null;
@@ -257,14 +259,31 @@ export function validateName(name) {
 }
 
 /**
+ * Read the band, preferring Typhoon and falling back to the local model.
+ *
+ * Typhoon is the reason this reads Thai marks at all, but it needs the network
+ * and a configured key. When it is unavailable the local model still produces
+ * a usable name, so a failed call degrades rather than blocking the capture —
+ * `backend` records which one answered.
+ *
  * @param {HTMLCanvasElement} band  straightened footer band, several lines tall
- * @returns {{name, confidence, box, lines, flags, needsReview}}
  */
 export async function readName(band) {
-  const service = await initOcr();
-  const raw = await service.recognize(band);
+  let lines = [];
+  let rawText = null;
+  let backend = 'typhoon';
+  let backendError = null;
 
-  const lines = toLines(raw);
+  try {
+    ({ lines, rawText } = await readBandRemote(band));
+  } catch (e) {
+    backendError = String(e?.message ?? e);
+    backend = 'paddle';
+    const service = await initOcr();
+    const raw = await service.recognize(band);
+    lines = toLines(raw);
+    rawText = typeof raw?.text === 'string' ? raw.text : null;
+  }
 
   const hit = parseName(lines);
   const printedHn = parseHn(lines);
@@ -277,16 +296,18 @@ export async function readName(band) {
   if (hit?.dropped > 0) {
     flags.push('มีวรรณยุกต์หรือการันต์ที่อ่านไม่ออกและถูกตัดทิ้ง — ตรวจการสะกดกับภาพ');
   }
+  if (backend === 'paddle') {
+    flags.push('อ่านชื่อด้วยโมเดลในเครื่อง (ต่อ Typhoon ไม่ได้) — วรรณยุกต์อาจตกหล่น');
+  }
 
   return {
     name: hit?.name ?? '',
     confidence: hit?.confidence ?? null,
     box: hit?.box ?? null,
     droppedMarks: hit?.dropped ?? 0,
-    // The library's own concatenation of everything it read. If this has
-    // content while `lines` is empty, the fault is in reading the result
-    // shape rather than in recognition itself.
-    rawText: typeof raw?.text === 'string' ? raw.text : null,
+    backend,
+    backendError,
+    rawText,
     printedHn,
     lines,
     flags,
