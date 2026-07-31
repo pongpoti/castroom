@@ -1,24 +1,37 @@
 /**
- * preprocess.js — cut the name line out of a HosXP footer box.
+ * preprocess.js — turn a photograph of the record into an HN and a
+ * straightened footer band for recognition.
  *
- * Everything here is plain canvas work. The barcode anchors supply the
- * geometry, so there is no page detection or template warp to do, and no
- * OpenCV build to ship.
+ * The QR supplies the whole coordinate frame, so there is no page detection,
+ * no template warp, no rotation search and no dependency on the footer's
+ * Code128 pair. Skew is measured from the QR's own axes and removed by the
+ * crop itself.
  */
 
-import { readSymbols, resolveHn, frameFromSymbols, rotateCanvas } from './anchors';
+import { readQrPose, cropPoseRegion, MIN_UNIT_PX } from './anchors';
 
-/** Name-line window, in units of u, relative to the HN barcode centre. */
-export const NAME_X = [-7.0, 7.0];
-export const NAME_Y = [1.4, 3.1];
+/**
+ * The footer band, in units of the QR's finder span, relative to its top-left
+ * finder pattern. Measured against two independent captures, where the name
+ * line landed at x -13.3..-10.1 and y 0.68..1.04; the window is widened from
+ * there so that recognition, not the geometry, decides where the line is.
+ */
+export const FOOTER_X = [-15.2, -7.6];
+export const FOOTER_Y = [-0.7, 1.8];
 
-/** Below roughly this width the symbols stop decoding. */
-export const MIN_FOOTER_WIDTH = 1500;
+/** The band is recognised at this multiple of capture resolution. */
+export const BAND_SCALE = 3;
 
-const TARGET_LINE_HEIGHT = 96;
+/**
+ * Beyond this the capture is angled enough that the pose, extrapolated across
+ * the ~13 units between the QR and the name, stops being trustworthy.
+ */
+export const MAX_SKEW = 1.12;
 
 function toCanvas(source) {
-  if (source instanceof HTMLCanvasElement) return source;
+  if (typeof HTMLCanvasElement !== 'undefined' && source instanceof HTMLCanvasElement) {
+    return source;
+  }
   const c = document.createElement('canvas');
   c.width = source.width ?? source.naturalWidth;
   c.height = source.height ?? source.naturalHeight;
@@ -26,8 +39,7 @@ function toCanvas(source) {
   return c;
 }
 
-/** Separable box blur — a cheap stand-in for the median blur used to
- *  estimate background illumination. */
+/** Separable box blur — a cheap stand-in for a median blur. */
 function boxBlur(data, w, h, radius) {
   const tmp = new Float32Array(w * h);
   const out = new Float32Array(w * h);
@@ -54,9 +66,9 @@ function boxBlur(data, w, h, radius) {
 }
 
 /**
- * Flatten uneven lighting and stretch contrast.
- * Dividing by a blurred copy removes the shading gradient a phone camera
- * leaves across a sheet, which matters more here than any sharpening would.
+ * Flatten uneven lighting and stretch contrast. Dividing by a blurred copy
+ * removes the shading gradient a phone camera leaves across a sheet, which
+ * matters more here than any sharpening would.
  */
 export function enhance(canvas) {
   const w = canvas.width;
@@ -70,7 +82,7 @@ export function enhance(canvas) {
     gray[p] = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
   }
 
-  const bg = boxBlur(gray, w, h, Math.max(4, Math.round(h / 3)));
+  const bg = boxBlur(gray, w, h, Math.max(8, Math.round(h / 4)));
 
   let lo = 255;
   let hi = 0;
@@ -89,117 +101,79 @@ export function enhance(canvas) {
     px[i + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
-
-  // upscale short lines — recognition is markedly better above ~64px tall
-  const scale = Math.max(1, TARGET_LINE_HEIGHT / h);
-  if (scale === 1) return canvas;
-  const out = document.createElement('canvas');
-  out.width = Math.round(w * scale);
-  out.height = Math.round(h * scale);
-  const octx = out.getContext('2d');
-  octx.imageSmoothingQuality = 'high';
-  octx.drawImage(canvas, 0, 0, out.width, out.height);
-  return out;
+  return canvas;
 }
 
-/**
- * How far apart the two independent scale estimates may drift before the frame
- * is treated as untrustworthy. On the reference capture they agree to within
- * 0.3%; a factor of 1.5 leaves room for point-estimation noise while still
- * catching a frame built from anchors that are not the footer pair.
- */
-export const MAX_SCALE_DISAGREEMENT = 1.5;
-
-/** Rotate about the frame origin, then cut the window in barcode units. */
-function cropName(canvas, frame) {
-  const { originX, originY, u, angleDeg } = frame;
-  const rad = (-angleDeg * Math.PI) / 180;
-
-  const x0 = NAME_X[0] * u;
-  const y0 = NAME_Y[0] * u;
-  const w = (NAME_X[1] - NAME_X[0]) * u;
-  const h = (NAME_Y[1] - NAME_Y[0]) * u;
-
+/** Cut a sub-rectangle, used to show the recognised line as evidence. */
+export function cropBox(canvas, box, pad = 6) {
+  const x = Math.max(0, Math.round(box.x - pad));
+  const y = Math.max(0, Math.round(box.y - pad));
+  const w = Math.min(canvas.width - x, Math.round(box.width + pad * 2));
+  const h = Math.min(canvas.height - y, Math.round(box.height + pad * 2));
+  if (w <= 0 || h <= 0) return null;
   const out = document.createElement('canvas');
-  out.width = Math.round(w);
-  out.height = Math.round(h);
-  const ctx = out.getContext('2d', { willReadFrequently: true });
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, out.width, out.height);
-
-  ctx.translate(-x0, -y0);
-  ctx.rotate(rad);
-  ctx.translate(-originX, -originY);
-  ctx.drawImage(canvas, 0, 0);
+  out.width = w;
+  out.height = h;
+  out.getContext('2d', { willReadFrequently: true })
+    .drawImage(canvas, x, y, w, h, 0, 0, w, h);
   return out;
 }
 
 /**
  * @param {HTMLImageElement|HTMLCanvasElement|ImageBitmap} source
- * @returns {{ok, error, hn, hnSources, warnings, nameCanvas, frame}}
+ * @returns {{ok, error, hn, hnSources, warnings, band, pose, debug}}
  */
 export function preprocess(source) {
   const warnings = [];
   const canvas = toCanvas(source);
+  const started = Date.now();
 
-  if (canvas.width < MIN_FOOTER_WIDTH) {
-    warnings.push(
-      `ภาพกว้าง ${canvas.width}px — ต่ำกว่าประมาณ ${MIN_FOOTER_WIDTH}px ` +
-      `บาร์โค้ดจะอ่านไม่ออก ถ่ายให้ใกล้ขึ้นหรือปิดการย่อภาพ`
-    );
-  }
+  const qr = readQrPose(canvas);
+  const debug = {
+    width: canvas.width,
+    height: canvas.height,
+    qrAttempts: qr.attempts,
+    angleTried: qr.angleTried,
+  };
 
-  let { symbols, canvas: working, attempts } = readSymbols(canvas);
-  let { hn, sources, error } = resolveHn(symbols);
-
-  if (error === 'image-upside-down') {
-    working = rotateCanvas(working, 180);
-    const retried = readSymbols(working);
-    symbols = retried.symbols;
-    attempts = attempts.concat(retried.attempts);
-    ({ hn, sources, error } = resolveHn(symbols));
-  }
-
-  const frame = frameFromSymbols(symbols, hn);
-  const debug = { width: canvas.width, height: canvas.height, attempts };
-
-  if (!hn) {
+  if (!qr.pose) {
     return {
-      ok: false,
-      error: error ?? 'no-identifiable-hn',
-      hn: null,
-      hnSources: sources,
-      warnings,
-      nameCanvas: null,
-      frame: null,
-      debug,
+      ok: false, error: 'no-qr', hn: null, hnSources: [],
+      warnings, band: null, pose: null, debug,
     };
   }
 
-  // A usable frame is what the name crop needs, not what the record needs. HN
-  // is decoded and cross-validated, so once it is settled the capture is worth
-  // keeping even if the anchors were too scattered to place the name window —
-  // the operator types the name instead of reshooting a good HN.
-  const unreliableFrame = frame !== null
-    && frame.scaleRatio !== null
-    && frame.scaleRatio > MAX_SCALE_DISAGREEMENT;
+  const { pose } = qr;
+  debug.unit = Math.round(pose.unit);
+  debug.rotationDeg = Number(pose.rotationDeg.toFixed(2));
+  debug.squareness = Number(pose.squareness.toFixed(3));
 
-  if (frame === null || unreliableFrame) {
+  const hn = qr.hn;
+  if (!hn) {
+    return {
+      ok: false, error: 'no-identifiable-hn', hn: null, hnSources: [],
+      warnings, band: null, pose, debug,
+    };
+  }
+  const hnSources = ['qr'];
+
+  if (pose.unit < MIN_UNIT_PX) {
     warnings.push(
-      'วางกรอบชื่อไม่ได้จากภาพนี้ — HN ยืนยันแล้วและใช้ได้ แต่ต้องพิมพ์ชื่อเอง'
+      `QR ในภาพเล็กเกินไป (${Math.round(pose.unit)}px) — ชื่ออาจอ่านไม่ออก ` +
+      'ถ่ายให้ใกล้ขึ้นหรือปิดการย่อภาพ'
     );
   }
-  debug.scaleRatio = frame?.scaleRatio == null ? null : Number(frame.scaleRatio.toFixed(2));
-  debug.frameUsable = frame !== null && !unreliableFrame;
+  const skew = Math.max(pose.squareness, 1 / pose.squareness);
+  if (skew > MAX_SKEW) {
+    warnings.push('ภาพเอียงมาก — กรอบชื่ออาจคลาดเคลื่อน ตรวจกับภาพด้านล่าง');
+  }
 
+  const band = enhance(
+    cropPoseRegion(qr.canvas, pose, FOOTER_X, FOOTER_Y, BAND_SCALE)
+  );
+
+  debug.ms = Date.now() - started;
   return {
-    ok: true,
-    error: null,
-    hn,
-    hnSources: sources,
-    warnings,
-    nameCanvas: debug.frameUsable ? enhance(cropName(working, frame)) : null,
-    frame,
-    debug,
+    ok: true, error: null, hn, hnSources, warnings, band, pose, debug,
   };
 }

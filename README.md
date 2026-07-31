@@ -1,142 +1,106 @@
-# Patient log — footer box capture
+# Patient log — footer capture
 
-Reads **HN** and **ชื่อ-สกุล** from the footer box of a HosXP OPD record.
-Capture the bordered box only; the full A4 page is not needed. Everything
-runs in the browser and no image or identifier leaves the device.
+Reads **HN** and **ชื่อ-สกุล** from the footer of a HosXP OPD record.
+Everything runs in the browser; no image or identifier leaves the device.
 
-## What the reference capture established
+## How it works
 
-`IMG_3830.jpg` (3024×4032, uncompressed) decodes cleanly where the earlier
-1108px samples did not. The failure there was resolution alone: the
-narrowest Code128 module measured **1 px** against the 2–3 px a decoder
-needs, with contrast perfectly healthy at 25/229. The `S__` prefix on those
-files points at LINE, which recompresses on send.
-
-At full resolution the footer yields three symbols, and **HN appears in all
-of them**:
-
-| Source | Payload | Carries HN |
-|---|---|---|
-| Footer Code128 (right of the pair) | 7 digits | direct |
-| Footer QR | `http://…/drugboard/<HN>` | as the URL tail |
-| Header Code128 | `<HN>%<date>%…` | before the first `%` |
-
-All three agreed on the reference capture. **HN is therefore never OCR'd** —
-it is decoded and cross-validated, so the only field text recognition has to
-handle is the name.
-
-## Why the design changed
-
-The earlier pipeline detected the page, warped it to a canonical A4 and cut
-the footer by template ratio. That is unnecessary once the footer's own
-symbols are readable: the QN barcode, HN barcode and QR code between them
-supply origin, scale and rotation directly.
-
-Consequences:
-
-- Full-page capture is no longer required — framing the box is enough.
-- Page detection, A4 warping and template ratios are all gone.
-- **OpenCV.js is gone**, roughly 8 MB off the bundle. The remaining geometry
-  is a canvas rotate and a crop.
-
-### The coordinate frame
+The QR code in the footer carries the whole coordinate frame. Its three finder
+patterns give an origin, a scale and a rotation in a single decode, and its
+payload — `http://…/drugboard/<HN>` — carries the HN directly.
 
 ```
-u  = HN barcode height
-u  = 0.373  × QR side length              primary scale, rotation-invariant
-u  = 0.2218 × QN→HN left-edge span        fallback when the QR is unreadable
-origin = HN barcode centre
-angle  = QN → QR baseline
-name ROI = x ∈ [−7.0u, +7.0u], y ∈ [+1.4u, +3.1u] from origin
+origin = top-left finder pattern
+unit   = distance between adjacent finder centres
+axes   = top-left → top-right, top-left → bottom-left
+HN     = last path segment of the QR URL
 ```
 
-Scale comes from the QR because its side length does not vary with payload
-length, unlike barcode width. The fallback uses barcode **left edges**,
-which the template fixes, rather than centres, which shift with digit count.
+So the pipeline is:
+
+1. Decode the QR. This yields the HN and the pose together.
+2. Straighten and cut the footer band using that pose, measured in `unit`.
+3. Recognise the band and pick the name out by its printed label.
+
+**HN is never OCR'd.** It is decoded from a Reed–Solomon protected symbol, so
+a successful decode is the strong half of the record. The name is the only
+field that has no machine-readable source.
+
+### Why the QR alone
+
+An earlier version built the frame from the footer's QN and HN Code128 pair
+and used the QR only for scale. That does not survive a whole-page photograph:
+on both reference captures the footer barcode modules measure about **2.5px**,
+under the 2–3px a decoder needs, so the pair either failed outright or decoded
+through a rotated retry that returned coordinates outside the image.
+
+Anchoring on the QR removes that dependency. It also removes the rotation
+sweep: a QR decodes at essentially any orientation, so rotation is *measured*
+from the finder patterns rather than searched for over nine candidate angles.
+
+### Why a band, not a line
+
+The name sits roughly 13 units from the QR, so a small angular error in the
+pose is amplified across that gap — the two reference captures disagree on the
+name line's position by about 0.2 units. Cutting a tight line at a fixed offset
+would be fitting to one capture.
+
+Instead the band spans `x ∈ [-15.2, -7.6]`, `y ∈ [-0.7, 1.8]` and is handed to
+the detector whole. Recognition finds the text lines; the name is selected by
+matching `ชื่อ-สกุล` and taking the value after the colon. Geometry only has to
+get the line *into frame*, which is a far weaker requirement.
 
 ## Measured behaviour
 
-| Condition | Result |
-|---|---|
-| Footer box only | OK — 2 independent HN sources |
-| Rotation 0–45°, and 90° | OK, via a rotation retry sweep |
-| Upside down (180°) | detected and auto-corrected |
-| QR unreadable | OK — fallback scale within 0.3% of truth |
-| Footer width ≥ 1500 px | OK |
-| Footer width ≤ 1361 px | fails cleanly |
-
-### Correction: what full-page captures actually do
-
-The table above was measured before the decoder was working, and it does not
-hold for whole-page photographs. Re-measured against `IMG_3830` and
-`IMG_3831`, both 3024×4032:
+Against `IMG_3830` and `IMG_3831`, both whole-page captures at native
+resolution:
 
 | | IMG_3830 | IMG_3831 |
 |---|---|---|
 | HN | 1636405 | 1636405 |
-| Sources agreeing | QR + header | QR + header + footer |
-| Footer barcode pair located | no | yes, but off-image coordinates |
-| Name window placed | no | no |
-| Time | 16 s | 15 s |
+| QR decode | 296 ms | 510 ms |
+| Rotation recovered | 1.09° | 1.49° |
+| Squareness | 0.997 | 0.980 |
+| `unit` | 158 px | 253 px |
+| Total preprocess | 1.1 s | 3.5 s |
 
-**HN is solid on both; the name window is placed on neither.** The footer
-Code128 pair is the weak link. It only reads when a rotated retry finds it, and
-`@zxing/library`'s canvas luminance source mutates itself on rotation, so the
-coordinates that come back can fall outside the image — the payload is
-checksummed and safe to trust, the position is not. Anchors that fail the
-bounds check are kept for cross-validating HN and excluded from the geometry,
-which is why a capture can succeed with a confirmed HN and still ask the
-operator to type the name.
+The previous barcode-anchored pipeline took 15 s and 67 s on the same two
+captures and placed the name window on neither.
 
-`NAME_X` / `NAME_Y` remain uncalibrated against a capture where the frame
-actually builds. Fixing the name half means making the footer pair decode with
-trustworthy coordinates first; tuning the constants before that would be
-fitting to noise.
+## Cross-checking the HN
 
-Rotation beyond about 12° needs the retry sweep: readers tolerate only mild
-skew, so failed passes are retried on rotated copies before giving up.
+The QR's error correction is the primary guarantee. As a second source, the HN
+is also printed in plain digits inside the band, so `parseHn` reads it back
+from the same recognition pass and compares. Agreement adds a source;
+disagreement is surfaced as a flag rather than silently resolved.
 
-### One safety rule worth keeping
-
-A single unidentified footer barcode is **never** accepted as the HN. The
-footer holds a QN barcode as well, and with only one symbol decoded there is
-no way to tell which is which — an early version returned a 4-digit queue
-number as an HN under rotation. A lone barcode is now accepted only when it
-matches a value another source already confirmed.
-
-The same ordering logic detects an inverted capture: if the *left* barcode
-matches the QR's HN, the image is upside down, and it is rotated and reread
-rather than rejected.
-
-## Verification stays mandatory
-
-Thai recognition on photographed forms lands roughly in the 85–95% range on
-clean crops — enough to save typing, not enough to commit a patient identity
-unattended. The name sits directly beneath the pixels it was read from, so
-the check is visual rather than remembered. HN, being decoded rather than
-recognised, is the reliable half of the record.
+Decoding the footer Code128 pair as a cross-check was tried and removed: it did
+not decode on either reference capture, at any scale, deskewed or raw. Shipping
+a check that never fires would have been worse than saying so.
 
 ## Setup
 
 ```bash
-npm install @zxing/library ppu-paddle-ocr onnxruntime-web
+npm install
+npm run dev
 ```
 
-The model is warmed on mount so the first capture is not the slow one. Move
-`readName` into a Web Worker before production — model load and inference
-will otherwise block the UI.
+Models are warmed on mount so the first capture is not the slow one. Move
+`readName` into a Web Worker before production — model load and inference will
+otherwise block the UI.
 
 ## What still needs measuring
 
-Model download was blocked in the build sandbox, so **name recognition
-accuracy is unverified**. The geometry is validated; the recognition is not.
-Run a batch in the browser and record:
+The geometry, the HN path and the timings above are verified. **Recognition is
+not** — model download is blocked in the build sandbox, so no name has been
+recognised end to end. Run a batch in the browser and record:
 
 - Name character error rate
-- Anchor-detection rate across real captures, by operator and lighting
-- How often `sources-disagree` fires — it should be near zero, and anything
-  else points at a form variant worth looking at
+- How often `parseName` falls through to the title-prefix fallback, which
+  indicates the label itself was misread
+- How often the printed HN disagrees with the QR — this should be near zero,
+  and anything else points at a form variant worth looking at
 
 If name CER disappoints, tighten the ROI to the value after the `:` before
-reaching for a different model. Recognition quality at this size responds
-far more to crop tightness and resolution than to model choice.
+reaching for a different model. Recognition quality at this size responds far
+more to crop tightness and resolution than to model choice.
