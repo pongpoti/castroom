@@ -112,13 +112,30 @@ export function dropFloatingMarks(words) {
   const median = heights[Math.floor(heights.length / 2)];
   const baseline = Math.max(...boxed.map((w) => w.box.y + w.box.height));
 
-  const kept = words.filter((w) => {
+  const kept = words.filter((w, i) => {
     const b = w?.box;
     if (!b || !Number.isFinite(b.height)) return true;
+
+    const text = String(w?.text ?? '').trim();
+    // ณ is a real one-letter word and turns up in surnames such as
+    // "ณ อยุธยา", so nothing here may discard a token on length alone.
+    if (text.length > 2 || text === 'ณ') return true;
+
     const short = b.height < median * 0.55;
     const floating = b.y + b.height < baseline - median * 0.25;
-    const tiny = String(w?.text ?? '').trim().length <= 2;
-    return !(short && floating && tiny);
+    if (short && floating) return false;
+
+    // Second signal, independent of height: a mark sits on top of the letter
+    // it belongs to, so its box falls almost entirely within a neighbour's
+    // horizontal span. Words are set side by side and only ever touch at the
+    // edges, even after the detector pads them.
+    const swallowed = [words[i - 1], words[i + 1]].some((n) => {
+      const nb = n?.box;
+      if (!nb || !Number.isFinite(nb.width) || !(b.width > 0)) return false;
+      const overlap = Math.min(b.x + b.width, nb.x + nb.width) - Math.max(b.x, nb.x);
+      return overlap > b.width * 0.8;
+    });
+    return !swallowed;
   });
 
   // Never let the filter empty a line: if every part looks like a fragment,
