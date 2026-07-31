@@ -14,13 +14,99 @@
 
 import {
   MultiFormatReader,
-  GenericMultipleBarcodeReader,
   BarcodeFormat,
   DecodeHintType,
   HybridBinarizer,
   BinaryBitmap,
   HTMLCanvasElementLuminanceSource,
+  Result,
+  ResultPoint,
 } from '@zxing/library';
+
+/**
+ * @zxing/library never exports its internal GenericMultipleBarcodeReader,
+ * so this ports the same crop-and-recurse algorithm: decode once, then
+ * recurse into the four regions around the found symbol's bounding box
+ * until no new symbol turns up.
+ */
+const MAX_MULTIPLE_BARCODES = 10;
+const MIN_DIMENSION_TO_RECUR = 100;
+
+class GenericMultipleBarcodeReader {
+  constructor(delegate) {
+    this.delegate = delegate;
+  }
+
+  decodeMultiple(image) {
+    const results = [];
+    this.doDecodeMultiple(image, results, 0, 0, 0);
+    return results;
+  }
+
+  doDecodeMultiple(image, results, xOffset, yOffset, currentDepth) {
+    if (currentDepth > MAX_MULTIPLE_BARCODES) return;
+    let result;
+    try {
+      result = this.delegate.decode(image);
+    } catch {
+      return;
+    }
+    const alreadyFound = results.some((r) => r.getText() === result.getText());
+    if (!alreadyFound) results.push(translateResultPoints(result, xOffset, yOffset));
+
+    const points = result.getResultPoints();
+    if (!points || points.length === 0) return;
+
+    const width = image.getWidth();
+    const height = image.getHeight();
+    let minX = width, minY = height, maxX = 0, maxY = 0;
+    for (const p of points) {
+      if (!p) continue;
+      const x = p.getX(), y = p.getY();
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+
+    if (minX > MIN_DIMENSION_TO_RECUR) {
+      this.doDecodeMultiple(
+        image.crop(0, 0, Math.floor(minX), height),
+        results, xOffset, yOffset, currentDepth + 1,
+      );
+    }
+    if (minY > MIN_DIMENSION_TO_RECUR) {
+      this.doDecodeMultiple(
+        image.crop(0, 0, width, Math.floor(minY)),
+        results, xOffset, yOffset, currentDepth + 1,
+      );
+    }
+    if (maxX < width - MIN_DIMENSION_TO_RECUR) {
+      this.doDecodeMultiple(
+        image.crop(Math.floor(maxX), 0, width - Math.floor(maxX), height),
+        results, xOffset + Math.floor(maxX), yOffset, currentDepth + 1,
+      );
+    }
+    if (maxY < height - MIN_DIMENSION_TO_RECUR) {
+      this.doDecodeMultiple(
+        image.crop(0, Math.floor(maxY), width, height - Math.floor(maxY)),
+        results, xOffset, yOffset + Math.floor(maxY), currentDepth + 1,
+      );
+    }
+  }
+}
+
+function translateResultPoints(result, xOffset, yOffset) {
+  const oldPoints = result.getResultPoints();
+  if (!oldPoints) return result;
+  const newPoints = oldPoints.map((p) => (p ? new ResultPoint(p.getX() + xOffset, p.getY() + yOffset) : p));
+  const newResult = new Result(
+    result.getText(), result.getRawBytes(), result.getNumBits(),
+    newPoints, result.getBarcodeFormat(), result.getTimestamp(),
+  );
+  newResult.putAllMetadata(result.getResultMetadata());
+  return newResult;
+}
 
 export const U_PER_QR = 0.373;
 export const U_PER_BARCODE_SPAN = 0.2218;

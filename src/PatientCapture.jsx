@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { preprocess } from '../lib/preprocess';
-import { readName } from '../lib/ocr';
+import { preprocess } from './lib/preprocess';
+import { readName } from './lib/ocr';
 
 /* Palette taken from the document itself: laser toner on office paper,
    annotated in blue ballpoint. Sarabun is the typeface Thai government
@@ -92,7 +92,7 @@ export default function PatientCapture({ onLog }) {
   }, [result]);
 
   // Warm the model up front so the first capture is not the slow one.
-  useEffect(() => { import('../lib/ocr').then((m) => m.initOcr()).catch(() => {}); }, []);
+  useEffect(() => { import('./lib/ocr').then((m) => m.initOcr()).catch(() => {}); }, []);
 
   const handleFile = useCallback(async (file) => {
     if (!file) return;
