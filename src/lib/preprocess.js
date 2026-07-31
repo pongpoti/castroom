@@ -141,16 +141,20 @@ export function preprocess(source) {
     );
   }
 
-  let { symbols, canvas: working } = readSymbols(canvas);
+  let { symbols, canvas: working, attempts } = readSymbols(canvas);
   let { hn, sources, error } = resolveHn(symbols);
 
   if (error === 'image-upside-down') {
     working = rotateCanvas(working, 180);
-    ({ symbols } = readSymbols(working));
+    const retried = readSymbols(working);
+    symbols = retried.symbols;
+    attempts = attempts.concat(retried.attempts);
     ({ hn, sources, error } = resolveHn(symbols));
   }
 
   const frame = frameFromSymbols(symbols);
+  const debug = { width: canvas.width, height: canvas.height, attempts };
+
   if (!hn || !frame) {
     return {
       ok: false,
@@ -160,6 +164,7 @@ export function preprocess(source) {
       warnings,
       nameCanvas: null,
       frame: null,
+      debug,
     };
   }
 
@@ -171,5 +176,6 @@ export function preprocess(source) {
     warnings,
     nameCanvas: enhance(cropName(working, frame)),
     frame,
+    debug,
   };
 }

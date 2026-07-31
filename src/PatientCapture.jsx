@@ -66,6 +66,14 @@ const STYLE = `
            color:var(--ink-2);padding:8px 10px;border-bottom:1px solid var(--rule)}
 .pc-log td{padding:9px 10px;border-bottom:1px solid var(--rule)}
 .pc-log td.hn{font-family:'IBM Plex Mono',monospace;font-weight:600}
+
+.pc-debug{margin-top:8px}
+.pc-debug summary{cursor:pointer;font-size:12.5px;color:var(--ink-2);
+                   padding:8px 0;user-select:none}
+.pc-debug-body{font-family:'IBM Plex Mono',monospace;font-size:11.5px;
+               line-height:1.6;white-space:pre-wrap;word-break:break-word;
+               background:#fff;border:1px solid var(--rule);padding:12px;
+               max-height:320px;overflow:auto}
 `;
 
 const ERRORS = {
@@ -82,6 +90,7 @@ export default function PatientCapture({ onLog }) {
   const [hn, setHn] = useState('');
   const [name, setName] = useState('');
   const [log, setLog] = useState([]);
+  const [debug, setDebug] = useState(null);
 
   const evidenceRef = useRef(null);
   const fileRef = useRef(null);
@@ -103,6 +112,7 @@ export default function PatientCapture({ onLog }) {
     try {
       const bitmap = await createImageBitmap(file);
       const pre = preprocess(bitmap);
+      setDebug({ at: new Date().toISOString(), fileName: file.name, fileSize: file.size, ...pre.debug, ok: pre.ok, error: pre.error, hn: pre.hn });
 
       if (!pre.ok) {
         setError(ERRORS[pre.error] ?? 'ประมวลผลภาพไม่สำเร็จ');
@@ -117,6 +127,7 @@ export default function PatientCapture({ onLog }) {
       setResult({ ...pre, ...read, flags: [...pre.warnings, ...read.flags] });
       setStage('done');
     } catch (e) {
+      setDebug((d) => d ?? { at: new Date().toISOString(), fileName: file.name, fileSize: file.size, error: 'exception' });
       setError(e.message ?? 'ประมวลผลภาพไม่สำเร็จ');
       setStage('idle');
     }
@@ -225,6 +236,15 @@ export default function PatientCapture({ onLog }) {
               </tbody>
             </table>
           </section>
+        )}
+
+        {debug && (
+          <details className="pc-panel pc-debug">
+            <summary>
+              ข้อมูลดีบัก ({debug.width}×{debug.height}px, {debug.attempts?.length ?? 0} ครั้ง)
+            </summary>
+            <pre className="pc-debug-body">{JSON.stringify(debug, null, 2)}</pre>
+          </details>
         )}
       </div>
     </div>
