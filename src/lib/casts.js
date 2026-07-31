@@ -7,17 +7,16 @@
  * needed to record — the type name is enough on its own.
  */
 export const CAST_TYPES = [
-  { id: 'uSlab', label: 'U Slab' },
-  { id: 'longArm', label: 'Long Arm Slab' },
-  { id: 'shortArm', label: 'Short Arm Slab' },
-  { id: 'shortArmAP', label: 'Short Arm AP Slab' },
-  { id: 'thumbSpica', label: 'Thumb Spica Slab' },
-  { id: 'ulnaGutter', label: 'Ulna Gutter Slab' },
-  { id: 'longLeg', label: 'Long Leg Slab' },
-  { id: 'kneeSlab', label: 'Knee Slab' },
   { id: 'shortLeg', label: 'Short Leg Slab' },
+  { id: 'longLeg', label: 'Long Leg Slab' },
+  { id: 'shortArm', label: 'Short Arm Slab' },
+  { id: 'longArm', label: 'Long Arm Slab' },
   { id: 'buddy', label: 'Buddy Splint' },
   { id: 'fingerSplint', label: 'Finger Splint' },
+  { id: 'thumbSpica', label: 'Thumb Spica Slab' },
+  { id: 'ulnaGutter', label: 'Ulna Gutter Slab' },
+  { id: 'uSlab', label: 'U Slab' },
+  { id: 'kneeSlab', label: 'Knee Slab' },
 ];
 
 const BY_ID = Object.fromEntries(CAST_TYPES.map((c) => [c.id, c]));
