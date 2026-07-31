@@ -1,4 +1,4 @@
-import { toLines, parseName, parseHn, validateName } from '../src/lib/ocr.js';
+import { toLines, parseName, parseHn, validateName, dropFloatingMarks } from '../src/lib/ocr.js';
 
 const b = (x,y,w,h) => ({ x, y, width: w, height: h });
 let pass = 0, fail = 0;
@@ -64,6 +64,58 @@ eq('female title name', parseName(toLines(alt))?.name, 'นางสาวมา
 eq('empty', parseName(toLines({})), null);
 eq('null raw', parseName(toLines(null)), null);
 eq('empty line arrays skipped', toLines({ lines: [[], null] }).length, 0);
+
+
+// --- detached tone marks (the "ซี อ" failure) ---------------------------
+// Real capture: นายวิสุทธิ์ สายแวว read as "นายวิสุทธิ ซี อ สายแวว". The karan
+// on ธิ์ is detected as its own small box high above the baseline and read as
+// two stray syllables, which line-ordering wedges between the real words.
+const withMarks = { lines: [[
+  {text:'ชื่อ-สกุลผู้ป่วย', box:b(10,100,180,60), confidence:0.93},
+  {text:':',              box:b(196,100,8,60),   confidence:0.80},
+  {text:'นายวิสุทธิ',      box:b(210,100,150,60), confidence:0.90},
+  {text:'ซี',             box:b(330,88,16,18),   confidence:0.41},   // floating mark
+  {text:'อ',              box:b(350,86,14,16),   confidence:0.38},   // floating mark
+  {text:'สายแวว',         box:b(380,100,120,60), confidence:0.94},
+]]};
+eq('floating marks dropped from text',
+   toLines(withMarks)[0].text, 'ชื่อ-สกุลผู้ป่วย : นายวิสุทธิ สายแวว');
+eq('name is clean of stray syllables',
+   parseName(toLines(withMarks))?.name, 'นายวิสุทธิ สายแวว');
+eq('box still spans the marks so evidence is not clipped',
+   toLines(withMarks)[0].box, b(10,86,490,74));
+
+// Must not eat legitimate short words that sit on the baseline at full height.
+const shortWords = [
+  {text:'รวม', box:b(0,100,80,60), confidence:.9},
+  {text:'0',   box:b(90,100,20,60), confidence:.9},   // short text, full height
+  {text:'รายการ', box:b(120,100,120,60), confidence:.9},
+];
+eq('short baseline word kept',
+   dropFloatingMarks(shortWords).map(w=>w.text), ['รวม','0','รายการ']);
+
+// A tall-but-narrow word is not a mark.
+const narrow = [
+  {text:'ก', box:b(0,100,18,60), confidence:.9},
+  {text:'ขคง', box:b(30,100,90,60), confidence:.9},
+];
+eq('narrow full-height word kept', dropFloatingMarks(narrow).map(w=>w.text), ['ก','ขคง']);
+
+// A longer string high on the line is not a tone mark either.
+const highWord = [
+  {text:'สมุทรสาคร', box:b(0,80,200,60), confidence:.9},
+  {text:'รพ.',       box:b(210,100,60,60), confidence:.9},
+];
+eq('multi-char high word kept', dropFloatingMarks(highWord).length, 2);
+
+// Degenerate: everything looks like a fragment -> keep the raw reading.
+const allTiny = [
+  {text:'อ', box:b(0,0,10,10), confidence:.3},
+  {text:'ซี', box:b(20,0,10,10), confidence:.3},
+];
+eq('never empties a line', dropFloatingMarks(allTiny).length, 2);
+eq('missing boxes are left alone',
+   dropFloatingMarks([{text:'ก'},{text:'ข'}]).length, 2);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

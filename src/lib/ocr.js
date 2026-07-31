@@ -91,6 +91,42 @@ function unionBox(boxes) {
 }
 
 /**
+ * Drop detached tone marks that were detected as words in their own right.
+ *
+ * Thai stacks marks above the line, and detection sometimes gives one its own
+ * small box. Recognition then reads that box as a syllable and the line
+ * grouping sorts it into reading order, so วิสุทธิ์ สายแวว comes back as
+ * "วิสุทธิ ซี อ สายแวว" — the karan arriving as two spurious words wedged
+ * between the real ones.
+ *
+ * A fragment has to fail all three tests to be dropped: a box much shorter
+ * than the line's own text, sitting clear of the baseline, carrying only a
+ * character or two. A real short word sits on the baseline at full height, so
+ * it survives.
+ */
+export function dropFloatingMarks(words) {
+  const boxed = words.filter((w) => w?.box && Number.isFinite(w.box.height) && w.box.height > 0);
+  if (boxed.length < 2) return words;
+
+  const heights = boxed.map((w) => w.box.height).sort((a, b) => a - b);
+  const median = heights[Math.floor(heights.length / 2)];
+  const baseline = Math.max(...boxed.map((w) => w.box.y + w.box.height));
+
+  const kept = words.filter((w) => {
+    const b = w?.box;
+    if (!b || !Number.isFinite(b.height)) return true;
+    const short = b.height < median * 0.55;
+    const floating = b.y + b.height < baseline - median * 0.25;
+    const tiny = String(w?.text ?? '').trim().length <= 2;
+    return !(short && floating && tiny);
+  });
+
+  // Never let the filter empty a line: if every part looks like a fragment,
+  // the assumption was wrong and the raw reading is better than nothing.
+  return kept.length ? kept : words;
+}
+
+/**
  * Flatten a recognition result into one entry per printed line.
  *
  * `recognize` returns `lines` as RecognitionResult[][] — each line is the list
@@ -101,11 +137,19 @@ export function toLines(raw) {
   if (Array.isArray(raw?.lines)) {
     return raw.lines
       .filter((words) => Array.isArray(words) && words.length)
-      .map((words) => ({
-        text: words.map((w) => String(w?.text ?? '')).join(' ').replace(/\s+/g, ' ').trim(),
-        confidence: words.reduce((a, w) => a + (w?.confidence ?? 0), 0) / words.length,
-        box: unionBox(words.map((w) => w?.box)),
-      }));
+      .map((words) => {
+        const kept = dropFloatingMarks(words);
+        return {
+          text: kept.map((w) => String(w?.text ?? '')).join(' ').replace(/\s+/g, ' ').trim(),
+          confidence: kept.reduce((a, w) => a + (w?.confidence ?? 0), 0) / kept.length,
+          // How many marks came off this line. They were misread rather than
+          // absent, so the spelling underneath them is the part to check.
+          dropped: words.length - kept.length,
+          // The box still spans every part, marks included, so the evidence
+          // strip shows the whole line rather than a clipped version of it.
+          box: unionBox(words.map((w) => w?.box)),
+        };
+      });
   }
   const flat = Array.isArray(raw?.results) ? raw.results : (Array.isArray(raw) ? raw : []);
   return flat.map((w) => ({
@@ -125,14 +169,20 @@ export function parseName(lines) {
     if (/ชื่อ|สกุล/.test(line.text)) {
       const value = stripLabel(line.text);
       if (value.length >= 3) {
-        return { name: value, confidence: line.confidence, box: line.box };
+        return {
+          name: value, confidence: line.confidence, box: line.box,
+          dropped: line.dropped ?? 0,
+        };
       }
     }
   }
   for (const line of lines) {
     const t = line.text.trim();
     if (THAI_TITLES.some((title) => t.startsWith(title))) {
-      return { name: t, confidence: line.confidence, box: line.box };
+      return {
+        name: t, confidence: line.confidence, box: line.box,
+        dropped: line.dropped ?? 0,
+      };
     }
   }
   return null;
@@ -184,11 +234,15 @@ export async function readName(band) {
   if (hit?.confidence != null && hit.confidence < 0.85) {
     flags.push('ความมั่นใจในการอ่านต่ำ — ตรวจกับภาพ');
   }
+  if (hit?.dropped > 0) {
+    flags.push('มีวรรณยุกต์หรือการันต์ที่อ่านไม่ออกและถูกตัดทิ้ง — ตรวจการสะกดกับภาพ');
+  }
 
   return {
     name: hit?.name ?? '',
     confidence: hit?.confidence ?? null,
     box: hit?.box ?? null,
+    droppedMarks: hit?.dropped ?? 0,
     // The library's own concatenation of everything it read. If this has
     // content while `lines` is empty, the fault is in reading the result
     // shape rather than in recognition itself.
