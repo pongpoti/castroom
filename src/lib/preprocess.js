@@ -102,6 +102,14 @@ export function enhance(canvas) {
   return out;
 }
 
+/**
+ * How far apart the two independent scale estimates may drift before the frame
+ * is treated as untrustworthy. On the reference capture they agree to within
+ * 0.3%; a factor of 1.5 leaves room for point-estimation noise while still
+ * catching a frame built from anchors that are not the footer pair.
+ */
+export const MAX_SCALE_DISAGREEMENT = 1.5;
+
 /** Rotate about the frame origin, then cut the window in barcode units. */
 function cropName(canvas, frame) {
   const { originX, originY, u, angleDeg } = frame;
@@ -152,7 +160,7 @@ export function preprocess(source) {
     ({ hn, sources, error } = resolveHn(symbols));
   }
 
-  const frame = frameFromSymbols(symbols);
+  const frame = frameFromSymbols(symbols, hn);
   const debug = { width: canvas.width, height: canvas.height, attempts };
 
   if (!hn || !frame) {
@@ -167,6 +175,14 @@ export function preprocess(source) {
       debug,
     };
   }
+
+  if (frame.scaleRatio !== null && frame.scaleRatio > MAX_SCALE_DISAGREEMENT) {
+    warnings.push(
+      'ตำแหน่งอ้างอิงไม่สอดคล้องกัน — กรอบชื่อที่ตัดมาอาจไม่ตรงตำแหน่ง ' +
+      'HN ยังเชื่อถือได้ แต่ให้ตรวจสอบชื่อและพิมพ์เองหากไม่ตรง'
+    );
+  }
+  debug.scaleRatio = frame.scaleRatio === null ? null : Number(frame.scaleRatio.toFixed(2));
 
   return {
     ok: true,
