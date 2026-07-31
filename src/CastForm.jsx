@@ -81,13 +81,20 @@ const STYLE = `
 .cf2-err{font-size:13px;color:var(--warn);line-height:1.6;margin-top:10px;text-align:center}
 .cf2-status{font-size:13.5px;color:var(--primary);text-align:center;padding:10px 0;font-weight:500}
 
-.cf2-castgrid{display:flex;flex-wrap:wrap;gap:8px}
+.cf2-castgrid{display:flex;flex-wrap:wrap;gap:14px}
 .cf2-castbtn{border:1.5px solid var(--border-strong);background:var(--surface);color:var(--ink);
             border-radius:999px;padding:9px 16px;cursor:pointer;font-family:inherit;
             font-size:13.5px;font-weight:500}
 .cf2-castbtn:hover{border-color:var(--primary)}
 .cf2-castbtn.active{border-color:var(--primary);background:var(--primary);color:#fff;
                     font-weight:600}
+
+/* One column per row on a phone: badges are easier to hit and read stacked
+   than wrapped into a ragged multi-per-row grid at narrow widths. */
+@media (max-width:480px){
+  .cf2-castgrid{flex-direction:column}
+  .cf2-castbtn{width:100%;text-align:left}
+}
 
 .cf2-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;min-height:1px}
 .cf2-chip{display:inline-flex;align-items:center;gap:6px;background:var(--primary-100);
@@ -283,7 +290,7 @@ export default function CastForm({ onLog }) {
         <section className="cf2-card">
           <div className="cf2-step">
             <span className="cf2-step-n">2</span>
-            <span className="cf2-step-t">ถ่ายภาพกรอบล่างใบบันทึก</span>
+            <span className="cf2-step-t">ถ่ายรูปใบรับยา</span>
           </div>
 
           {!capture ? (
@@ -296,7 +303,7 @@ export default function CastForm({ onLog }) {
                 onKeyDown={(e) => e.key === 'Enter' && !photoBusy && setCamera(true)}
               >
                 <b>{photoBusy ? photoStatus : 'แตะเพื่อถ่ายภาพ'}</b>
-                <span>ต้องเห็นทั้ง QR code และบรรทัด “ชื่อ-สกุลผู้ป่วย” ในภาพเดียว</span>
+                <span>ถ่ายให้เห็นกรอบสีดำ</span>
               </div>
               <button className="cf2-linkbtn" onClick={() => !photoBusy && fileRef.current?.click()}>
                 หรือเลือกไฟล์ภาพที่ถ่ายไว้แล้ว
@@ -342,7 +349,7 @@ export default function CastForm({ onLog }) {
         <section className="cf2-card">
           <div className="cf2-step">
             <span className="cf2-step-n">3</span>
-            <span className="cf2-step-t">Cast Type</span>
+            <span className="cf2-step-t">ใส่เฝือกแบบไหน ?</span>
           </div>
 
           <div className="cf2-castgrid">
