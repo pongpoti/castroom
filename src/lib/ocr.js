@@ -16,37 +16,26 @@ const THAI_TITLES = ['นางสาว', 'เด็กชาย', 'เด็�
 let servicePromise = null;
 
 /**
- * Detection and recognition tuning, aimed squarely at Thai diacritics.
+ * Library defaults are used deliberately.
  *
- * The library's defaults assume a page of Latin text. Thai stacks tone marks
- * and the karan above the line and vowels below it, and those marks are what
- * decide whether วิสุทธิ์ reads as วิสุทธิ์ or as วิสุทธิ. Every value here is a
- * documented default being moved for a specific observed failure, so it is
- * easy to walk any of them back.
+ * An attempt to tune for Thai diacritics made things worse, and it is worth
+ * recording why so it is not repeated:
+ *
+ * - `recognition.imageHeight: 64` was the main fault. PP-OCRv5 recognition is
+ *   trained at 48px input height, so raising it puts every crop out of the
+ *   distribution the model was fitted on and degrades all text, not just the
+ *   marks it was meant to rescue.
+ * - `detection.paddingVertical: 0.9` makes a crop 2.8x the height of its line.
+ *   The rows in this band are closely spaced, so the crop swallows its
+ *   neighbours and recognition reads several lines superimposed.
+ * - `recognition.minimumConfidence: 0.6` then discarded the resulting garbage,
+ *   which is why the failure showed up as no lines at all rather than as bad
+ *   ones — the HN line disappeared alongside the name.
+ *
+ * The lesson is that these are not knobs to turn from first principles without
+ * being able to run the model. Confidence per line is now reported in the
+ * debug panel so any future change can be judged against real output.
  */
-export const OCR_TUNING = {
-  detection: {
-    // Default 0.4 of box height. Too tight for a script that stacks marks
-    // above and below: the crop clips them before recognition sees them.
-    paddingVertical: 0.9,
-    // Default "auto" caps the long side at 1920. The band is deliberately
-    // upscaled before this point, and the cap throws that away again — fine
-    // marks are the first detail to disappear when it does.
-    maxSideLength: 2560,
-    // Default 20px^2. A detached tone mark clears that easily, gets detected
-    // as its own region, and is then recognised as a stray syllable of its
-    // own. The real lines here are orders of magnitude larger.
-    minimumAreaThreshold: 120,
-  },
-  recognition: {
-    // Default 48. The marks live in the top and bottom fifths of the line, so
-    // vertical resolution is worth more here than it would be for Latin.
-    imageHeight: 64,
-    // Default 0.5. Upstream notes noise reads at 0.2-0.45 and real text at
-    // 0.65+, and stray fragments are exactly what we are trying to drop.
-    minimumConfidence: 0.6,
-  },
-};
 
 /**
  * Load the PP-OCRv5 Thai models once, then reuse them.
@@ -61,10 +50,7 @@ export function initOcr() {
   if (servicePromise) return servicePromise;
   servicePromise = (async () => {
     const { PaddleOcrService, V5_THAI_MOBILE_MODEL } = await import('ppu-paddle-ocr/web');
-    const service = new PaddleOcrService({
-      model: V5_THAI_MOBILE_MODEL,
-      ...OCR_TUNING,
-    });
+    const service = new PaddleOcrService({ model: V5_THAI_MOBILE_MODEL });
     await service.initialize();
     return service;
   })();
@@ -203,6 +189,10 @@ export async function readName(band) {
     name: hit?.name ?? '',
     confidence: hit?.confidence ?? null,
     box: hit?.box ?? null,
+    // The library's own concatenation of everything it read. If this has
+    // content while `lines` is empty, the fault is in reading the result
+    // shape rather than in recognition itself.
+    rawText: typeof raw?.text === 'string' ? raw.text : null,
     printedHn,
     lines,
     flags,

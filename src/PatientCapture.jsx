@@ -146,7 +146,15 @@ export default function PatientCapture({ onLog }) {
       // visible in the panel instead of only showing up as an empty field.
       setDebug((d) => ({
         ...d,
-        ocrLines: read.lines.map((l) => l.text),
+        // Text alone was not enough to tell a recognition failure from a
+        // parsing one: confidence is what says whether the model read the
+        // line badly or the reader dropped it.
+        ocrLines: read.lines.map((l) => ({
+          text: l.text,
+          conf: l.confidence == null ? null : Number(l.confidence.toFixed(3)),
+        })),
+        ocrLineCount: read.lines.length,
+        ocrRawText: read.rawText,
         ocrName: read.name,
         ocrPrintedHn: read.printedHn,
       }));
