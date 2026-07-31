@@ -5,31 +5,42 @@ import CameraFrame from './CameraFrame';
 import { CAST_TYPES, castLabel } from './lib/casts';
 
 /*
- * Palette: a single accessible indigo (--primary) carries every
- * interactive and selected state, checked against white at both text and
- * large-element sizes; amber is reserved for warnings so it never competes
- * with "selected." Neutral surfaces and a visible border keep cards legible
- * without leaning on color the way the first pass did.
+ * Palette: violet stays the one color every interactive/selected element
+ * agrees on, but each step now gets its own accent (violet, pink, teal) so
+ * the page reads as lively rather than a single muted hue repeated four
+ * times. Every text/fill pairing below is checked against WCAG AA before
+ * use, the darker "-700" of each hue is what carries text or sits on white,
+ * and the bright base hue is reserved for decoration — large fills, the
+ * hero gradient, icon strokes — where nothing has to be read off it.
  */
 const STYLE = `
 @import url('https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
-.cf2{--primary:#3457D5;--primary-700:#25409E;--primary-100:#E8ECFC;
-     --warn:#9A5B12;--warn-soft:#FBF0DE;
+.cf2{--primary:#6D4AFF;--primary-700:#5636D9;--primary-100:#EFE9FF;
+     --pink:#FF5A87;--pink-700:#B22D53;--pink-100:#FFE4EC;
+     --teal:#12B3B3;--teal-700:#087070;--teal-100:#DFF7F5;
+     --warn:#C2410C;--warn-soft:#FFEDD5;
      --ink:#181B24;--ink-2:#585F6E;
-     --surface:#F5F6F9;--card:#FFFFFF;--border:#E3E6ED;--border-strong:#8B95AC;
+     --surface:#F7F6FD;--card:#FFFFFF;--border:#E3E6ED;--border-strong:#8B95AC;
      font-family:'Mitr',system-ui,sans-serif;color:var(--ink);
      background:var(--surface);min-height:100vh;padding-bottom:100px}
 .cf2 *{box-sizing:border-box}
 .cf2 :focus-visible{outline:2.5px solid var(--primary);outline-offset:2px}
 
-.cf2-hero{background:var(--card);border-bottom:1px solid var(--border);
-          padding:18px 20px;display:flex;align-items:center;gap:14px}
-.cf2-hero-icon{width:44px;height:44px;flex:none;border-radius:14px;
-               background:var(--primary-100);display:flex;
-               align-items:center;justify-content:center}
-.cf2-title{font-size:20px;font-weight:600;letter-spacing:-.01em}
-.cf2-sub{font-size:13px;color:var(--ink-2);margin-top:1px}
+.cf2-topbar{height:5px;background:linear-gradient(90deg,var(--primary),var(--pink),var(--teal))}
+.cf2-hero{position:relative;overflow:hidden;background:var(--primary);
+          padding:22px 20px;display:flex;align-items:center;gap:14px}
+.cf2-hero::before{content:'';position:absolute;top:-60px;right:-40px;width:180px;height:180px;
+          border-radius:50%;background:radial-gradient(circle,var(--pink) 0%,transparent 70%);
+          opacity:.55;pointer-events:none}
+.cf2-hero::after{content:'';position:absolute;bottom:-70px;left:20%;width:150px;height:150px;
+          border-radius:50%;background:radial-gradient(circle,var(--teal) 0%,transparent 70%);
+          opacity:.45;pointer-events:none}
+.cf2-hero-icon{position:relative;width:46px;height:46px;flex:none;border-radius:14px;
+               background:rgba(255,255,255,.94);display:flex;
+               align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.cf2-title{position:relative;font-size:21px;font-weight:700;letter-spacing:-.01em;color:#fff}
+.cf2-sub{position:relative;font-size:13px;color:#fff;margin-top:1px}
 
 .cf2-shell{max-width:640px;margin:0 auto;padding:16px;
            display:flex;flex-direction:column;gap:14px}
@@ -40,6 +51,8 @@ const STYLE = `
 .cf2-step-n{width:26px;height:26px;border-radius:50%;background:var(--primary-100);
             color:var(--primary-700);font-weight:600;font-size:13px;flex:none;
             display:flex;align-items:center;justify-content:center}
+.cf2-step-n.pink{background:var(--pink-100);color:var(--pink-700)}
+.cf2-step-n.teal{background:var(--teal-100);color:var(--teal-700)}
 .cf2-step-t{font-size:15.5px;font-weight:600}
 
 .cf2-date{width:100%;border:1.5px solid var(--border-strong);border-radius:12px;
@@ -82,18 +95,20 @@ const STYLE = `
 .cf2-status{font-size:13.5px;color:var(--primary);text-align:center;padding:10px 0;font-weight:500}
 
 .cf2-castgrid{display:flex;flex-wrap:wrap;gap:14px}
-.cf2-castbtn{border:1.5px solid var(--border-strong);background:var(--surface);color:var(--ink);
-            border-radius:999px;padding:9px 16px;cursor:pointer;font-family:inherit;
-            font-size:13.5px;font-weight:500}
-.cf2-castbtn:hover{border-color:var(--primary)}
+.cf2-castbtn{width:fit-content;border:1.5px solid var(--border-strong);
+            background:var(--surface);color:var(--ink);
+            border-radius:999px;padding:9px 18px;cursor:pointer;font-family:inherit;
+            font-size:13.5px;font-weight:500;text-align:center}
+.cf2-castbtn:hover{border-color:var(--primary);color:var(--primary-700)}
 .cf2-castbtn.active{border-color:var(--primary);background:var(--primary);color:#fff;
-                    font-weight:600}
+                    font-weight:600;box-shadow:0 3px 10px rgba(109,74,255,.32)}
 
 /* One column per row on a phone: badges are easier to hit and read stacked
-   than wrapped into a ragged multi-per-row grid at narrow widths. */
+   than wrapped into a ragged multi-per-row grid at narrow widths. Each badge
+   stays fit-content and centers in the column rather than stretching full
+   width, so a short label like "U Slab" doesn't turn into an oddly empty bar. */
 @media (max-width:480px){
-  .cf2-castgrid{flex-direction:column}
-  .cf2-castbtn{width:100%;text-align:left}
+  .cf2-castgrid{flex-direction:column;align-items:center}
 }
 
 .cf2-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;min-height:1px}
@@ -264,11 +279,12 @@ export default function CastForm({ onLog }) {
         />
       )}
 
+      <div className="cf2-topbar" />
       <header className="cf2-hero">
         <div className="cf2-hero-icon">
           <svg width="24" height="24" viewBox="0 0 64 64" fill="none">
-            <rect x="10" y="24" width="44" height="20" rx="10" fill="#fff" stroke="#3457D5" strokeWidth="3.5" />
-            <path d="M18 24v20M28 24v20M38 24v20M48 24v20" stroke="#3457D5" strokeWidth="3.5" strokeLinecap="round" />
+            <rect x="10" y="24" width="44" height="20" rx="10" fill="#fff" stroke="#6D4AFF" strokeWidth="3.5" />
+            <path d="M18 24v20M28 24v20M38 24v20M48 24v20" stroke="#6D4AFF" strokeWidth="3.5" strokeLinecap="round" />
           </svg>
         </div>
         <div>
@@ -289,7 +305,7 @@ export default function CastForm({ onLog }) {
 
         <section className="cf2-card">
           <div className="cf2-step">
-            <span className="cf2-step-n">2</span>
+            <span className="cf2-step-n pink">2</span>
             <span className="cf2-step-t">ถ่ายรูปใบรับยา</span>
           </div>
 
@@ -348,7 +364,7 @@ export default function CastForm({ onLog }) {
 
         <section className="cf2-card">
           <div className="cf2-step">
-            <span className="cf2-step-n">3</span>
+            <span className="cf2-step-n teal">3</span>
             <span className="cf2-step-t">ใส่เฝือกแบบไหน ?</span>
           </div>
 
