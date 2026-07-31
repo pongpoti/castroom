@@ -117,5 +117,46 @@ eq('never empties a line', dropFloatingMarks(allTiny).length, 2);
 eq('missing boxes are left alone',
    dropFloatingMarks([{text:'ก'},{text:'ข'}]).length, 2);
 
+
+// --- marks that keep full height but sit inside their letter --------------
+// Second observed reading: "นายวิสุทธิ ส สายแวว". The stray ส was not short
+// enough for the height test, but its box falls inside the preceding word's
+// span, which a separate word never does.
+const swallowed = { lines: [[
+  {text:'ชื่อ-สกุลผู้ป่วย', box:b(10,100,180,60), confidence:0.93},
+  {text:':',              box:b(196,100,8,60),   confidence:0.80},
+  {text:'นายวิสุทธิ',      box:b(210,100,150,60), confidence:0.90},
+  {text:'ส',              box:b(300,96,20,58),   confidence:0.55},  // inside the word above
+  {text:'สายแวว',         box:b(380,100,120,60), confidence:0.94},
+]]};
+eq('mark inside its letter dropped',
+   parseName(toLines(swallowed))?.name, 'นายวิสุทธิ สายแวว');
+eq('drop is reported for the flag', toLines(swallowed)[0].dropped, 1);
+
+// ณ is a real one-letter word in Thai surnames and must never be eaten.
+const naAyutthaya = [
+  {text:'นายสมชาย', box:b(0,100,160,60), confidence:.95},
+  {text:'ณ',        box:b(180,100,30,60), confidence:.9},
+  {text:'อยุธยา',    box:b(220,100,110,60), confidence:.95},
+];
+eq('ณ between words kept', dropFloatingMarks(naAyutthaya).map(w=>w.text),
+   ['นายสมชาย','ณ','อยุธยา']);
+// Even squeezed against a neighbour, ณ survives on the name exemption.
+const naTight = [
+  {text:'นายสมชาย', box:b(0,100,160,60), confidence:.95},
+  {text:'ณ',        box:b(100,96,30,58), confidence:.9},
+  {text:'อยุธยา',    box:b(220,100,110,60), confidence:.95},
+];
+eq('ณ kept even when overlapping', dropFloatingMarks(naTight).length, 3);
+
+// Detector padding makes neighbours touch; that is not containment.
+const padded = [
+  {text:'รพ.',       box:b(0,100,70,60),   confidence:.9},
+  {text:'ก',         box:b(60,100,40,60),  confidence:.9},   // 25% edge overlap only
+  {text:'สมุทรสาคร', box:b(105,100,200,60), confidence:.9},
+];
+eq('edge overlap from padding is not a mark',
+   dropFloatingMarks(padded).map(w=>w.text), ['รพ.','ก','สมุทรสาคร']);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
