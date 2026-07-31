@@ -5,7 +5,7 @@ import { MIN_UNIT_PX } from './lib/anchors';
 
 const STYLE = `
 .cf{position:fixed;inset:0;z-index:50;background:#000;display:flex;
-    flex-direction:column;font-family:'Sarabun',system-ui,sans-serif}
+    flex-direction:column;font-family:'Mitr',system-ui,sans-serif}
 .cf-stage{position:relative;flex:1;overflow:hidden;background:#000}
 .cf-stage video{width:100%;height:100%;object-fit:cover;display:block}
 
@@ -62,39 +62,20 @@ export default function CameraFrame({ onCapture, onCancel, onFallback }) {
   const [guide, setGuide] = useState(null);     // guide rect in CSS px
   const [shooting, setShooting] = useState(false);
 
-  // Size the guide to CAPTURE_ASPECT, inset from the stage.
-  //
-  // On a portrait screen the guide is stood on its end. The footer is a ~5:1
-  // strip, so laying it across a portrait phone wastes most of the sensor;
-  // running it down the long axis instead puts roughly 1.6x more pixels across
-  // the strip, and the pipeline does not care which way up the page was shot.
+  // Size the guide to CAPTURE_ASPECT, inset from the stage. Always horizontal
+  // — a wide, short strip — regardless of whether the phone is held upright:
+  // the operator is expected to turn the page (or the phone) to line the
+  // footer up with it, not the guide to turn and fill a portrait screen.
   useEffect(() => {
     const fit = () => {
       const el = stageRef.current;
       if (!el) return;
       const { width, height } = el.getBoundingClientRect();
-      const upright = height > width;
-      let w;
-      let h;
-      let top;
-      if (upright) {
-        // Leave the status pill and the caption their own room, then give the
-        // guide everything that is left rather than centring it in the whole
-        // stage and letting the caption land on top of it.
-        const topPad = 56;
-        const bottomPad = 112;
-        const avail = Math.max(120, height - topPad - bottomPad);
-        h = avail;
-        w = h / CAPTURE_ASPECT;
-        if (w > width * 0.7) { w = width * 0.7; h = w * CAPTURE_ASPECT; }
-        top = topPad + (avail - h) / 2;
-      } else {
-        w = width * 0.92;
-        h = w / CAPTURE_ASPECT;
-        if (h > height * 0.62) { h = height * 0.62; w = h * CAPTURE_ASPECT; }
-        top = (height - h) / 2;
-      }
-      setGuide({ w, h, left: (width - w) / 2, top, upright });
+      let w = width * 0.92;
+      let h = w / CAPTURE_ASPECT;
+      const maxH = height * 0.42;
+      if (h > maxH) { h = maxH; w = h * CAPTURE_ASPECT; }
+      setGuide({ w, h, left: (width - w) / 2, top: (height - h) / 2 });
     };
     fit();
     window.addEventListener('resize', fit);
@@ -231,15 +212,9 @@ export default function CameraFrame({ onCapture, onCancel, onFallback }) {
                   <span className="cf-corner tl" /><span className="cf-corner tr" />
                   <span className="cf-corner bl" /><span className="cf-corner br" />
                 </div>
-                <div
-                  className="cf-caption"
-                  style={guide.upright
-                    ? { bottom: 14 }
-                    : { top: guide.top + guide.h + 16 }}
-                >
+                <div className="cf-caption" style={{ top: guide.top + guide.h + 16 }}>
                   วางกรอบล่างของใบบันทึกให้เต็มกรอบนี้ —
                   ต้องเห็นทั้ง QR code และบรรทัด “ชื่อ-สกุลผู้ป่วย”
-                  {guide.upright && <><br />หมุนกระดาษให้แถบยาววางตามกรอบ</>}
                 </div>
                 <div className="cf-hint" style={{ top: Math.max(12, guide.top - 46) }}>
                   <span className={`cf-pill ${status.cls}`}>
