@@ -159,6 +159,9 @@ export const MIN_QR_PX = 60;
  */
 const RETRY_ANGLES = [0, 90, -90, -12, 12, -25, 25, -40, 40];
 
+/** How many leading entries of RETRY_ANGLES are quarter turns. */
+const CARDINAL_ANGLES = 3;
+
 function buildReader() {
   const hints = new Map();
   hints.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -221,15 +224,27 @@ function pointStats(points) {
   };
 }
 
-/** Sort raw decode results into the roles the footer defines. */
-function classify(results) {
+/**
+ * Sort raw decode results into the roles the footer defines.
+ *
+ * `positionValid` records whether a symbol's reported coordinates actually land
+ * inside the image. OneDReader retries a failed 1D scan on a rotated copy when
+ * TRY_HARDER is set, and zxing's canvas luminance source mutates itself instead
+ * of returning a new one, so those retries can report a barcode at coordinates
+ * outside the canvas. The text is still trustworthy — it is checksummed — but
+ * the position is not, so the geometry must not be built from it.
+ */
+function classify(results, width, height) {
   const out = { qr: null, footer: [], header: null };
+  const inBounds = (s) => width == null || (
+    s.minX >= -1 && s.minY >= -1 && s.maxX <= width + 1 && s.maxY <= height + 1
+  );
   for (const r of results) {
     const text = r.getText();
     const pts = r.getResultPoints?.() ?? [];
     if (!pts.length) continue;
     const s = pointStats(pts);
-    const entry = { text, stats: s, points: pts };
+    const entry = { text, stats: s, points: pts, positionValid: inBounds(s) };
 
     if (r.getBarcodeFormat() === BarcodeFormat.QR_CODE) {
       out.qr = entry;
@@ -271,7 +286,7 @@ export function readSymbols(canvas) {
     const probe = rotateCanvas(canvas, angle);
     const started = Date.now();
     const results = decodeOnce(probe);
-    const sym = classify(results);
+    const sym = classify(results, probe.width, probe.height);
     attempts.push(summarizeAttempt(angle, results, sym, Date.now() - started));
 
     if (sym.qr && sym.footer.length >= 2) {
@@ -279,6 +294,14 @@ export function readSymbols(canvas) {
     }
     if (!best || symbolScore(sym) > symbolScore(best.symbols)) {
       best = { symbols: sym, canvas: probe, retryAngle: angle };
+    }
+
+    // Past the quarter turns, the remaining angles are small skews that only
+    // stand to improve the name window. If the HN is already settled by two
+    // independent sources, another minute of sweeping is not worth the wait.
+    if (attempts.length >= CARDINAL_ANGLES) {
+      const settled = resolveHn(best.symbols);
+      if (settled.hn && settled.sources.length >= 2) break;
     }
   }
 
@@ -351,6 +374,12 @@ export function frameFromSymbols(sym, hnText) {
     : sym.footer.findIndex((f) => f.text === hnText);
   if (hnIndex < 0) return null;
   const qnIndex = hnIndex === 0 ? sym.footer.length - 1 : 0;
+
+  // Every anchor the frame is built from has to be somewhere real. A symbol
+  // whose coordinates landed outside the image still cross-validates the HN,
+  // but placing the name window from it would be guesswork.
+  if (!sym.footer[hnIndex].positionValid || !sym.footer[qnIndex].positionValid) return null;
+  if (sym.qr && !sym.qr.positionValid) return null;
 
   let uQr = null;
   if (sym.qr) {

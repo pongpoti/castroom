@@ -163,10 +163,10 @@ export function preprocess(source) {
   const frame = frameFromSymbols(symbols, hn);
   const debug = { width: canvas.width, height: canvas.height, attempts };
 
-  if (!hn || !frame) {
+  if (!hn) {
     return {
       ok: false,
-      error: error ?? 'no-frame',
+      error: error ?? 'no-identifiable-hn',
       hn: null,
       hnSources: sources,
       warnings,
@@ -176,13 +176,21 @@ export function preprocess(source) {
     };
   }
 
-  if (frame.scaleRatio !== null && frame.scaleRatio > MAX_SCALE_DISAGREEMENT) {
+  // A usable frame is what the name crop needs, not what the record needs. HN
+  // is decoded and cross-validated, so once it is settled the capture is worth
+  // keeping even if the anchors were too scattered to place the name window —
+  // the operator types the name instead of reshooting a good HN.
+  const unreliableFrame = frame !== null
+    && frame.scaleRatio !== null
+    && frame.scaleRatio > MAX_SCALE_DISAGREEMENT;
+
+  if (frame === null || unreliableFrame) {
     warnings.push(
-      'ตำแหน่งอ้างอิงไม่สอดคล้องกัน — กรอบชื่อที่ตัดมาอาจไม่ตรงตำแหน่ง ' +
-      'HN ยังเชื่อถือได้ แต่ให้ตรวจสอบชื่อและพิมพ์เองหากไม่ตรง'
+      'วางกรอบชื่อไม่ได้จากภาพนี้ — HN ยืนยันแล้วและใช้ได้ แต่ต้องพิมพ์ชื่อเอง'
     );
   }
-  debug.scaleRatio = frame.scaleRatio === null ? null : Number(frame.scaleRatio.toFixed(2));
+  debug.scaleRatio = frame?.scaleRatio == null ? null : Number(frame.scaleRatio.toFixed(2));
+  debug.frameUsable = frame !== null && !unreliableFrame;
 
   return {
     ok: true,
@@ -190,7 +198,7 @@ export function preprocess(source) {
     hn,
     hnSources: sources,
     warnings,
-    nameCanvas: enhance(cropName(working, frame)),
+    nameCanvas: debug.frameUsable ? enhance(cropName(working, frame)) : null,
     frame,
     debug,
   };
