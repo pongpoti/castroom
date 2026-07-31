@@ -1,15 +1,15 @@
 /**
- * anchors.js — read the three symbols in a HosXP footer box and turn them
- * into a coordinate frame.
+ * anchors.js — locate the footer from the QR code alone.
  *
- * The footer carries a QN barcode, an HN barcode and a QR code. Together
- * they give origin, scale and rotation, so no page detection, A4 template
- * or full-page capture is needed — framing the bordered box is enough.
+ * The QR carries everything the geometry needs. Its three finder patterns give
+ * an origin, a scale and a rotation in one decode, and the payload's URL tail
+ * carries the HN. Nothing else on the page has to be read for the record to be
+ * correct, which matters because the footer's Code128 pair is the one thing
+ * that does not decode reliably from a whole-page photograph.
  *
- * Constants measured against a 3024x4032 reference capture:
- *   u = HN barcode height
- *   u = 0.373  x QR side length                     (primary scale)
- *   u = 0.2218 x QN-to-HN left-edge span            (fallback scale)
+ * Everything below is measured in `unit`: the distance between adjacent finder
+ * pattern centres. It is a stable, rotation-independent scale that does not
+ * change with payload length the way a barcode's width does.
  */
 
 import {
@@ -19,160 +19,18 @@ import {
   HybridBinarizer,
   BinaryBitmap,
   HTMLCanvasElementLuminanceSource,
-  Result,
-  ResultPoint,
 } from '@zxing/library';
 
 /**
- * @zxing/library never exports its internal GenericMultipleBarcodeReader, so
- * this reimplements the same crop-and-recurse idea: decode once, then recurse
- * into the four regions around the found symbol's bounding box until no new
- * symbol turns up.
- *
- * The recursion crops *canvases* rather than BinaryBitmaps on purpose.
- * BinaryBitmap.crop() delegates to the luminance source, and zxing's
- * HTMLCanvasElementLuminanceSource.crop() calls the base implementation, which
- * unconditionally throws UnsupportedOperationException — so the bitmap-level
- * recursion the upstream reader uses cannot work with a canvas source at all.
+ * A QR decodes at essentially any orientation, so the common case needs no
+ * sweep at all. These are a cheap safety net for the awkward angles where
+ * resampling blur can defeat detection; a QR-only pass is fast enough that
+ * trying a few costs little.
  */
-const MAX_RECUR_DEPTH = 4;
-const MIN_DIMENSION_TO_RECUR = 100;
-const MIN_DECODABLE_PX = 40;
+const QR_FALLBACK_ANGLES = [0, 90, -90, 180, 45, -45];
 
-function cropCanvas(source, x, y, w, h) {
-  const out = document.createElement('canvas');
-  out.width = w;
-  out.height = h;
-  const ctx = out.getContext('2d', { willReadFrequently: true });
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, w, h);
-  ctx.drawImage(source, x, y, w, h, 0, 0, w, h);
-  return out;
-}
-
-class MultiSymbolReader {
-  constructor(delegate, hints) {
-    this.delegate = delegate;
-    this.hints = hints;
-  }
-
-  /**
-   * @param {(results: Result[]) => boolean} [isEnough] stops the search as soon
-   *   as the caller has what it needs, so a frame that decodes early does not
-   *   pay for the remaining branches.
-   */
-  decodeCanvas(canvas, isEnough) {
-    const results = [];
-    this.isEnough = isEnough ?? (() => false);
-    this.recurse(canvas, results, 0, 0, 0);
-    return results;
-  }
-
-  decodeOne(canvas) {
-    const source = new HTMLCanvasElementLuminanceSource(canvas);
-    const bitmap = new BinaryBitmap(new HybridBinarizer(source));
-    // Hints must be passed on every call: MultiFormatReader.decode(image)
-    // with no hints argument resets its reader set, losing both
-    // POSSIBLE_FORMATS and TRY_HARDER.
-    return this.delegate.decode(bitmap, this.hints);
-  }
-
-  recurse(canvas, results, xOffset, yOffset, depth) {
-    if (depth > MAX_RECUR_DEPTH) return;
-    if (canvas.width < MIN_DECODABLE_PX || canvas.height < MIN_DECODABLE_PX) return;
-    if (this.isEnough(results)) return;
-
-    let result;
-    try {
-      result = this.decodeOne(canvas);
-    } catch {
-      return;
-    }
-
-    if (!results.some((r) => r.getText() === result.getText())) {
-      results.push(translateResultPoints(result, xOffset, yOffset));
-    }
-
-    const points = result.getResultPoints();
-    if (!points || points.length === 0) return;
-
-    const width = canvas.width;
-    const height = canvas.height;
-    let minX = width, minY = height, maxX = 0, maxY = 0;
-    for (const p of points) {
-      if (!p) continue;
-      const x = p.getX(), y = p.getY();
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
-    }
-    minX = Math.max(0, Math.floor(minX));
-    minY = Math.max(0, Math.floor(minY));
-    maxX = Math.min(width, Math.ceil(maxX));
-    maxY = Math.min(height, Math.ceil(maxY));
-
-    if (minX > MIN_DIMENSION_TO_RECUR) {
-      this.recurse(cropCanvas(canvas, 0, 0, minX, height),
-        results, xOffset, yOffset, depth + 1);
-    }
-    if (minY > MIN_DIMENSION_TO_RECUR) {
-      this.recurse(cropCanvas(canvas, 0, 0, width, minY),
-        results, xOffset, yOffset, depth + 1);
-    }
-    if (maxX < width - MIN_DIMENSION_TO_RECUR) {
-      this.recurse(cropCanvas(canvas, maxX, 0, width - maxX, height),
-        results, xOffset + maxX, yOffset, depth + 1);
-    }
-    if (maxY < height - MIN_DIMENSION_TO_RECUR) {
-      this.recurse(cropCanvas(canvas, 0, maxY, width, height - maxY),
-        results, xOffset, yOffset + maxY, depth + 1);
-    }
-  }
-}
-
-function translateResultPoints(result, xOffset, yOffset) {
-  const oldPoints = result.getResultPoints();
-  if (!oldPoints) return result;
-  const newPoints = oldPoints.map((p) => (p ? new ResultPoint(p.getX() + xOffset, p.getY() + yOffset) : p));
-  const newResult = new Result(
-    result.getText(), result.getRawBytes(), result.getNumBits(),
-    newPoints, result.getBarcodeFormat(), result.getTimestamp(),
-  );
-  newResult.putAllMetadata(result.getResultMetadata());
-  return newResult;
-}
-
-export const U_PER_QR = 0.373;
-export const U_PER_BARCODE_SPAN = 0.2218;
-export const MIN_QR_PX = 60;
-
-/**
- * Rotations tried in order when the first decode pass comes up short.
- *
- * Cardinal turns come before the small skews: a QR decodes at almost any
- * angle, but a Code128 only reads when its bars are roughly perpendicular to
- * the scan lines, so the orientation that yields the two footer barcodes is
- * nearly always a quarter turn rather than a few degrees of skew. Trying the
- * skews first meant paying for a full recursive search at every one of them
- * before reaching the angle that actually works.
- */
-const RETRY_ANGLES = [0, 90, -90, -12, 12, -25, 25, -40, 40];
-
-/** How many leading entries of RETRY_ANGLES are quarter turns. */
-const CARDINAL_ANGLES = 3;
-
-function buildReader() {
-  const hints = new Map();
-  hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-    BarcodeFormat.CODE_128,
-    BarcodeFormat.QR_CODE,
-  ]);
-  hints.set(DecodeHintType.TRY_HARDER, true);
-  const reader = new MultiFormatReader();
-  reader.setHints(hints);
-  return new MultiSymbolReader(reader, hints);
-}
+/** Below this the footer text is too coarse to recognise. */
+export const MIN_UNIT_PX = 80;
 
 /** Rotate a canvas by `deg`, growing the output so nothing is clipped. */
 export function rotateCanvas(source, deg) {
@@ -194,223 +52,129 @@ export function rotateCanvas(source, deg) {
   return out;
 }
 
-/** A QR plus both footer barcodes is everything the frame needs. */
-function enoughForFrame(results) {
-  let qr = 0;
-  let footer = 0;
-  for (const r of results) {
-    if (r.getBarcodeFormat() === BarcodeFormat.QR_CODE) qr++;
-    else if (/^\d+$/.test(r.getText())) footer++;
-  }
-  return qr >= 1 && footer >= 2;
+function buildReader(formats) {
+  const hints = new Map();
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, formats);
+  hints.set(DecodeHintType.TRY_HARDER, true);
+  const reader = new MultiFormatReader();
+  reader.setHints(hints);
+  return { reader, hints };
 }
 
-function decodeOnce(canvas) {
-  try {
-    return buildReader().decodeCanvas(canvas, enoughForFrame) ?? [];
-  } catch {
-    return [];
-  }
+function decodeOne(canvas, formats) {
+  const { reader, hints } = buildReader(formats);
+  const source = new HTMLCanvasElementLuminanceSource(canvas);
+  const bitmap = new BinaryBitmap(new HybridBinarizer(source));
+  // Hints must be passed on the call too: MultiFormatReader.decode(image) with
+  // no hints argument resets its reader set, losing POSSIBLE_FORMATS and
+  // TRY_HARDER.
+  return reader.decode(bitmap, hints);
 }
 
-function pointStats(points) {
-  const xs = points.map((p) => p.getX());
-  const ys = points.map((p) => p.getY());
+/** The HN is the last path segment of the QR's drugboard URL. */
+export function hnFromQrText(text) {
+  if (typeof text !== 'string') return null;
+  const tail = text.replace(/[/\s]+$/, '').split('/').pop();
+  return /^\d{4,}$/.test(tail) ? tail : null;
+}
+
+/**
+ * Pose from the finder patterns.
+ *
+ * zxing returns QR result points as [bottomLeft, topLeft, topRight] with an
+ * optional fourth alignment pattern. Two edges off the top-left corner give
+ * the QR's own axes directly, so rotation is measured rather than searched.
+ */
+function poseFromPoints(points) {
+  if (!points || points.length < 3) return null;
+  const [BL, TL, TR] = points.map((p) => [p.getX(), p.getY()]);
+
+  const ex = [TR[0] - TL[0], TR[1] - TL[1]];
+  const ey = [BL[0] - TL[0], BL[1] - TL[1]];
+  const lx = Math.hypot(ex[0], ex[1]);
+  const ly = Math.hypot(ey[0], ey[1]);
+  if (!(lx > 1) || !(ly > 1)) return null;
+
   return {
-    minX: Math.min(...xs), maxX: Math.max(...xs),
-    minY: Math.min(...ys), maxY: Math.max(...ys),
-    cx: (Math.min(...xs) + Math.max(...xs)) / 2,
-    cy: (Math.min(...ys) + Math.max(...ys)) / 2,
+    originX: TL[0],
+    originY: TL[1],
+    ux: [ex[0] / lx, ex[1] / lx],
+    uy: [ey[0] / ly, ey[1] / ly],
+    unit: (lx + ly) / 2,
+    rotationDeg: (Math.atan2(ex[1], ex[0]) * 180) / Math.PI,
+    // 1.0 is a square-on capture. Drifting away means the page was shot at an
+    // angle, and since the name sits many units from the QR, that error is
+    // amplified across the gap.
+    squareness: lx / ly,
   };
 }
 
 /**
- * Sort raw decode results into the roles the footer defines.
- *
- * `positionValid` records whether a symbol's reported coordinates actually land
- * inside the image. OneDReader retries a failed 1D scan on a rotated copy when
- * TRY_HARDER is set, and zxing's canvas luminance source mutates itself instead
- * of returning a new one, so those retries can report a barcode at coordinates
- * outside the canvas. The text is still trustworthy — it is checksummed — but
- * the position is not, so the geometry must not be built from it.
+ * Decode the QR and derive the footer pose from it.
+ * @returns {{text, hn, pose, angleTried, attempts}|null}
  */
-function classify(results, width, height) {
-  const out = { qr: null, footer: [], header: null };
-  const inBounds = (s) => width == null || (
-    s.minX >= -1 && s.minY >= -1 && s.maxX <= width + 1 && s.maxY <= height + 1
-  );
-  for (const r of results) {
-    const text = r.getText();
-    const pts = r.getResultPoints?.() ?? [];
-    if (!pts.length) continue;
-    const s = pointStats(pts);
-    const entry = { text, stats: s, points: pts, positionValid: inBounds(s) };
-
-    if (r.getBarcodeFormat() === BarcodeFormat.QR_CODE) {
-      out.qr = entry;
-    } else if (/^\d+$/.test(text)) {
-      out.footer.push(entry);
-    } else {
-      out.header = entry;               // long delimited header payload
-    }
-  }
-  out.footer.sort((a, b) => a.stats.minX - b.stats.minX);
-  return out;
-}
-
-function summarizeAttempt(angle, results, sym, ms) {
-  return {
-    angle,
-    ms,
-    decoded: results.map((r) => ({
-      format: BarcodeFormat[r.getBarcodeFormat()] ?? String(r.getBarcodeFormat()),
-      text: r.getText(),
-    })),
-    qr: !!sym.qr,
-    footerCount: sym.footer.length,
-    header: !!sym.header,
-  };
-}
-
-/** How much of the frame a decode pass recovered, for picking a fallback. */
-function symbolScore(sym) {
-  return (sym.qr ? 1 : 0) + sym.footer.length + (sym.header ? 1 : 0);
-}
-
-/** Decode with a rotation sweep; returns the canvas that actually worked. */
-export function readSymbols(canvas) {
+export function readQrPose(canvas) {
   const attempts = [];
-  let best = null;
-
-  for (const angle of RETRY_ANGLES) {
+  for (const angle of QR_FALLBACK_ANGLES) {
     const probe = rotateCanvas(canvas, angle);
     const started = Date.now();
-    const results = decodeOnce(probe);
-    const sym = classify(results, probe.width, probe.height);
-    attempts.push(summarizeAttempt(angle, results, sym, Date.now() - started));
+    let result = null;
+    try {
+      result = decodeOne(probe, [BarcodeFormat.QR_CODE]);
+    } catch {
+      result = null;
+    }
+    attempts.push({ angle, ms: Date.now() - started, ok: !!result });
+    if (!result) continue;
 
-    if (sym.qr && sym.footer.length >= 2) {
-      return { symbols: sym, canvas: probe, retryAngle: angle, attempts };
-    }
-    if (!best || symbolScore(sym) > symbolScore(best.symbols)) {
-      best = { symbols: sym, canvas: probe, retryAngle: angle };
-    }
-
-    // Past the quarter turns, the remaining angles are small skews that only
-    // stand to improve the name window. If the HN is already settled by two
-    // independent sources, another minute of sweeping is not worth the wait.
-    if (attempts.length >= CARDINAL_ANGLES) {
-      const settled = resolveHn(best.symbols);
-      if (settled.hn && settled.sources.length >= 2) break;
-    }
+    const pose = poseFromPoints(result.getResultPoints());
+    if (!pose) continue;
+    return {
+      text: result.getText(),
+      hn: hnFromQrText(result.getText()),
+      pose,
+      canvas: probe,
+      angleTried: angle,
+      attempts,
+    };
   }
-
-  // No angle gave a full frame. Return the richest pass rather than re-running
-  // angle 0, which the sweep already tried as its first attempt.
-  return { ...best, attempts };
+  return { text: null, hn: null, pose: null, canvas, angleTried: null, attempts };
 }
 
 /**
- * Resolve HN, cross-validating every source that carries it.
+ * Cut a rectangle expressed in pose units, straightening it on the way out.
  *
- * A lone unidentified footer barcode is never accepted: the footer holds a
- * QN barcode too, and with one symbol decoded there is no way to tell them
- * apart. Returning a queue number as an HN would attach the record to the
- * wrong patient.
+ * The pose's axes are mapped onto the output axes, so whatever rotation the
+ * capture had is removed here rather than searched for earlier.
+ *
+ * @param {number[]} X  [from, to] along the QR's own x axis, in units
+ * @param {number[]} Y  [from, to] along the QR's own y axis, in units
  */
-export function resolveHn(sym) {
-  const sources = {};
+export function cropPoseRegion(canvas, pose, X, Y, scale = 1) {
+  const { originX, originY, ux, uy, unit } = pose;
+  const w = Math.max(1, Math.round((X[1] - X[0]) * unit * scale));
+  const h = Math.max(1, Math.round((Y[1] - Y[0]) * unit * scale));
 
-  if (sym.qr) {
-    const tail = sym.qr.text.replace(/\/+$/, '').split('/').pop();
-    if (/^\d+$/.test(tail)) sources.qr = tail;
-  }
-  if (sym.header) {
-    const head = sym.header.text.split('%')[0];
-    if (/^\d+$/.test(head)) sources.header = head;
-  }
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const ctx = out.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.imageSmoothingQuality = 'high';
 
-  const known = new Set(Object.values(sources));
-  if (known.size) {
-    // Pick the footer barcode by value rather than by position. Which barcode
-    // sits "right" of the other depends on how the capture is rotated, and the
-    // footer reads vertically on a quarter-turned photo, so ordering by x is
-    // meaningless there. Matching against a value the QR or header already
-    // established keeps the safety rule intact: an unidentified barcode is
-    // still never promoted to HN on its own.
-    const match = sym.footer.find((f) => known.has(f.text));
-    if (match) sources.footer = match.text;
-  } else if (sym.footer.length >= 2) {
-    // Nothing independent to check against, so fall back to the printed
-    // convention that the HN barcode is the far one from the QN.
-    sources.footer = sym.footer[sym.footer.length - 1].text;
-  }
-
-  const values = new Set(Object.values(sources));
-  if (!values.size) {
-    return { hn: null, sources: [], error: 'no-identifiable-hn' };
-  }
-  if (values.size > 1) {
-    return { hn: null, sources: Object.keys(sources), error: 'sources-disagree' };
-  }
-  return { hn: [...values][0], sources: Object.keys(sources), error: null };
-}
-
-/**
- * Build the coordinate frame.
- *
- * `hnText` names which footer barcode is the HN. Without it the origin would
- * have to be guessed from position, which only holds while the footer reads
- * left-to-right — on a quarter-turned capture it silently anchors the frame to
- * the QN barcode instead and the name window lands on blank paper.
- *
- * @returns {{originX, originY, u, angleDeg}|null}
- */
-export function frameFromSymbols(sym, hnText) {
-  if (sym.footer.length < 2) return null;
-
-  const hnIndex = hnText == null
-    ? sym.footer.length - 1
-    : sym.footer.findIndex((f) => f.text === hnText);
-  if (hnIndex < 0) return null;
-  const qnIndex = hnIndex === 0 ? sym.footer.length - 1 : 0;
-
-  // Every anchor the frame is built from has to be somewhere real. A symbol
-  // whose coordinates landed outside the image still cross-validates the HN,
-  // but placing the name window from it would be guesswork.
-  if (!sym.footer[hnIndex].positionValid || !sym.footer[qnIndex].positionValid) return null;
-  if (sym.qr && !sym.qr.positionValid) return null;
-
-  let uQr = null;
-  if (sym.qr) {
-    const { minX, maxX, minY, maxY } = sym.qr.stats;
-    const side = ((maxX - minX) + (maxY - minY)) / 2;
-    if (side >= MIN_QR_PX) uQr = U_PER_QR * side;
-  }
-
-  let uSpan = null;
-  {
-    const a = sym.footer[qnIndex].stats;
-    const b = sym.footer[hnIndex].stats;
-    const span = Math.hypot(b.minX - a.minX, b.minY - a.minY);
-    if (span >= 120) uSpan = U_PER_BARCODE_SPAN * span;
-  }
-
-  const u = uQr ?? uSpan;
-  if (u === null) return null;
-
-  const hn = sym.footer[hnIndex].stats;
-  const p0 = sym.footer[qnIndex].stats;
-  const p1 = sym.qr ? sym.qr.stats : hn;
-  const angleDeg = (Math.atan2(p1.cy - p0.cy, p1.cx - p0.cx) * 180) / Math.PI;
-
-  // The two scale estimates are independent: one comes from the QR's side
-  // length, the other from the span between the footer barcodes. On a genuine
-  // footer they agree closely, so a wide disagreement means the anchors used
-  // here are not the pair the constants were measured against.
-  const scaleRatio = uQr !== null && uSpan !== null
-    ? Math.max(uQr / uSpan, uSpan / uQr)
-    : null;
-
-  return { originX: hn.cx, originY: hn.cy, u, angleDeg, uQr, uSpan, scaleRatio };
+  // Image point p maps to output as
+  //   out = scale * ( (p - origin)·û  -  offset·unit )
+  // which is exactly a setTransform with the axes as the matrix rows.
+  const dotX = ux[0] * originX + ux[1] * originY;
+  const dotY = uy[0] * originX + uy[1] * originY;
+  ctx.setTransform(
+    scale * ux[0], scale * uy[0],
+    scale * ux[1], scale * uy[1],
+    -scale * (dotX + X[0] * unit),
+    -scale * (dotY + Y[0] * unit),
+  );
+  ctx.drawImage(canvas, 0, 0);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  return out;
 }

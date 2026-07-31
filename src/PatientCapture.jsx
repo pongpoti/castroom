@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { preprocess } from './lib/preprocess';
+import { preprocess, cropBox } from './lib/preprocess';
 import { readName } from './lib/ocr';
 
 /* Palette taken from the document itself: laser toner on office paper,
@@ -77,10 +77,9 @@ const STYLE = `
 `;
 
 const ERRORS = {
-  'no-identifiable-hn': 'อ่านบาร์โค้ดไม่ได้ — ถ่ายให้เห็นกรอบล่างทั้งกรอบ ชัดและใกล้ขึ้น',
+  'no-qr': 'อ่าน QR code ไม่ได้ — ต้องเห็น QR ในกรอบล่างทั้งอัน ชัดและใกล้ขึ้น',
+  'no-identifiable-hn': 'QR อ่านได้แต่ไม่มี HN อยู่ในนั้น — ตรวจสอบว่าเป็นเอกสารที่ถูกต้อง',
   'sources-disagree': 'บาร์โค้ดกับ QR ให้ HN ไม่ตรงกัน — ตรวจสอบเอกสารแล้วถ่ายใหม่',
-  'image-upside-down': 'ภาพกลับหัวและแก้อัตโนมัติไม่สำเร็จ — ถ่ายใหม่',
-  'no-frame': 'หาตำแหน่งอ้างอิงไม่ครบ — ต้องเห็นบาร์โค้ดทั้งสองและ QR ในภาพเดียว',
 };
 
 export default function PatientCapture({ onLog }) {
@@ -97,8 +96,8 @@ export default function PatientCapture({ onLog }) {
 
   useEffect(() => {
     if (!evidenceRef.current) return;
-    if (!result?.nameCanvas) { evidenceRef.current.replaceChildren(); return; }
-    evidenceRef.current.replaceChildren(result.nameCanvas);
+    if (!result?.evidence) { evidenceRef.current.replaceChildren(); return; }
+    evidenceRef.current.replaceChildren(result.evidence);
   }, [result]);
 
   // Warm the model up front so the first capture is not the slow one.
@@ -121,17 +120,30 @@ export default function PatientCapture({ onLog }) {
         return;
       }
 
+      // HN is settled by the QR before recognition is even loaded, so it is
+      // shown straight away rather than waiting on the name.
       setHn(pre.hn);
-      if (!pre.nameCanvas) {
-        setName('');
-        setResult({ ...pre, flags: pre.warnings });
-        setStage('done');
-        return;
-      }
       setStage('reading-name');
-      const read = await readName(pre.nameCanvas);
+      const read = await readName(pre.band);
       setName(read.name);
-      setResult({ ...pre, ...read, flags: [...pre.warnings, ...read.flags] });
+
+      // The HN is also printed in plain digits in the band. Agreement makes it
+      // a second independent source; disagreement is worth surfacing loudly,
+      // since one of the two readings is wrong.
+      const extraFlags = [];
+      const sources = [...pre.hnSources];
+      if (read.printedHn === pre.hn) sources.push('ตัวเลขในภาพ');
+      else if (read.printedHn) {
+        extraFlags.push(`HN ในภาพอ่านได้เป็น ${read.printedHn} ไม่ตรงกับ QR (${pre.hn}) — ตรวจสอบก่อนบันทึก`);
+      }
+
+      setResult({
+        ...pre,
+        ...read,
+        hnSources: sources,
+        evidence: (read.box && cropBox(pre.band, read.box)) ?? pre.band,
+        flags: [...pre.warnings, ...read.flags, ...extraFlags],
+      });
       setStage('done');
     } catch (e) {
       setDebug((d) => d ?? { at: new Date().toISOString(), fileName: file.name, fileSize: file.size, error: 'exception' });
@@ -154,7 +166,7 @@ export default function PatientCapture({ onLog }) {
 
   const ready = hn.trim().length >= 4 && name.trim().length >= 3;
   const busy = stage === 'reading-barcode' || stage === 'reading-name';
-  const status = stage === 'reading-barcode' ? 'กำลังอ่านบาร์โค้ด…'
+  const status = stage === 'reading-barcode' ? 'กำลังอ่าน QR code…'
     : stage === 'reading-name' ? 'กำลังอ่านชื่อ…' : '';
 
   return (
@@ -182,8 +194,8 @@ export default function PatientCapture({ onLog }) {
             >
               <b>{busy ? status : 'ถ่ายภาพกรอบล่าง'}</b>
               <span>
-                ให้เห็นบาร์โค้ดทั้งสองและ QR code ในภาพเดียว
-                เอียงได้ถึงประมาณ 45 องศา กว้างอย่างน้อย 1500 พิกเซล
+                ให้เห็น QR code ในกรอบล่างทั้งอัน — ใช้ QR ตัวเดียวหาตำแหน่งทั้งหมด
+                เอียงกี่องศาก็ได้ แต่อย่าถ่ายเฉียงจนกระดาษบิด
               </span>
             </div>
             <input ref={fileRef} type="file" accept="image/*" capture="environment"
@@ -201,8 +213,10 @@ export default function PatientCapture({ onLog }) {
             <div className="pc-field">
               <div className="pc-label">
                 <span>HN</span>
-                <span className={`pc-src ${result.hnSources.length > 1 ? 'ok' : 'weak'}`}>
-                  ยืนยันตรงกัน {result.hnSources.length} แหล่ง
+                <span className="pc-src ok">
+                  {result.hnSources.length > 1
+                    ? `ยืนยันตรงกัน ${result.hnSources.length} แหล่ง`
+                    : 'จาก QR code (มีเช็คซัม)'}
                 </span>
               </div>
               <input className="pc-input mono" value={hn} inputMode="numeric"
@@ -212,11 +226,9 @@ export default function PatientCapture({ onLog }) {
             <div className="pc-field">
               <div className="pc-label">
                 <span>ชื่อ-สกุล</span>
-                <span className={`pc-src ${result.nameCanvas ? '' : 'weak'}`}>
-                  {result.nameCanvas ? 'ตรวจกับภาพด้านล่าง' : 'พิมพ์เอง — ไม่มีภาพให้เทียบ'}
-                </span>
+                <span className="pc-src">ตรวจกับภาพด้านล่าง</span>
               </div>
-              {result.nameCanvas && <div className="pc-evidence" ref={evidenceRef} />}
+              {result.evidence && <div className="pc-evidence" ref={evidenceRef} />}
               <input className="pc-input" value={name}
                      onChange={(e) => setName(e.target.value)} aria-label="ชื่อ-สกุล" />
             </div>
