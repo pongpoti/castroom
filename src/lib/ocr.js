@@ -177,6 +177,28 @@ export function toLines(raw) {
 }
 
 /**
+ * Remove stray single letters left in a name.
+ *
+ * Recognition turns a mark it cannot place into a letter of its own: the karan
+ * on วิสุทธิ์ came back as a separate "ส", and the same run produced "d บ e" on
+ * the line below. Whatever the detector's boxes looked like, a lone letter is
+ * not a word in a Thai name, so the name value can be cleaned without knowing
+ * anything about the geometry.
+ *
+ * Length is counted in code points, so a syllable carrying its own marks is
+ * more than one character and stays. ณ is the one genuine single-letter word,
+ * as in "ณ อยุธยา", and is always kept.
+ */
+export function dropStrayLetters(value) {
+  const tokens = value.split(/\s+/).filter(Boolean);
+  const kept = tokens.filter((t) => [...t].length > 1 || t === 'ณ');
+  return {
+    text: kept.join(' '),
+    dropped: tokens.length - kept.length,
+  };
+}
+
+/**
  * Pick the name out of the recognised lines.
  * Matching is on the field label rather than line order, because a wrapped
  * row would shift every index.
@@ -184,11 +206,11 @@ export function toLines(raw) {
 export function parseName(lines) {
   for (const line of lines) {
     if (/ชื่อ|สกุล/.test(line.text)) {
-      const value = stripLabel(line.text);
-      if (value.length >= 3) {
+      const cleaned = dropStrayLetters(stripLabel(line.text));
+      if (cleaned.text.length >= 3) {
         return {
-          name: value, confidence: line.confidence, box: line.box,
-          dropped: line.dropped ?? 0,
+          name: cleaned.text, confidence: line.confidence, box: line.box,
+          dropped: (line.dropped ?? 0) + cleaned.dropped,
         };
       }
     }
@@ -196,9 +218,10 @@ export function parseName(lines) {
   for (const line of lines) {
     const t = line.text.trim();
     if (THAI_TITLES.some((title) => t.startsWith(title))) {
+      const cleaned = dropStrayLetters(t);
       return {
-        name: t, confidence: line.confidence, box: line.box,
-        dropped: line.dropped ?? 0,
+        name: cleaned.text, confidence: line.confidence, box: line.box,
+        dropped: (line.dropped ?? 0) + cleaned.dropped,
       };
     }
   }

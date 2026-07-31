@@ -1,4 +1,4 @@
-import { toLines, parseName, parseHn, validateName, dropFloatingMarks } from '../src/lib/ocr.js';
+import { toLines, parseName, parseHn, validateName, dropFloatingMarks, dropStrayLetters } from '../src/lib/ocr.js';
 
 const b = (x,y,w,h) => ({ x, y, width: w, height: h });
 let pass = 0, fail = 0;
@@ -157,6 +157,34 @@ const padded = [
 ];
 eq('edge overlap from padding is not a mark',
    dropFloatingMarks(padded).map(w=>w.text), ['รพ.','ก','สมุทรสาคร']);
+
+
+// --- stray single letters, from a real debug dump -------------------------
+// Recognition reported the name line at conf 0.923 as one string, with the
+// karan on วิสุทธิ์ arriving as a separate "ส". No box test can reach it here
+// because the whole line came back already joined.
+const real = { lines: [
+  [{text:'ห้องตรวจ :1', box:b(0,0,200,50), confidence:0.98}],
+  [{text:'QN :3430 HN : 1636405', box:b(0,60,400,50), confidence:0.986}],
+  [{text:'ชื่อ-สกุลผู้ป่วย : นายวิสุทธิ ส สายแวว', box:b(0,120,600,50), confidence:0.923}],
+  [{text:'สิทธิการรักษา : ประกันสังคมเลือก รพ.สมุทรสาคร', box:b(0,180,700,50), confidence:0.972}],
+  [{text:'1', box:b(0,240,20,50), confidence:0.501}],
+]};
+eq('stray letter removed from the real reading',
+   parseName(toLines(real))?.name, 'นายวิสุทธิ สายแวว');
+eq('the removal is counted so the flag fires',
+   parseName(toLines(real))?.dropped, 1);
+eq('printed HN still read from the same dump', parseHn(toLines(real)), '1636405');
+
+// The rule itself.
+eq('single letter dropped', dropStrayLetters('นายวิสุทธิ ส สายแวว').text, 'นายวิสุทธิ สายแวว');
+eq('latin fragments dropped', dropStrayLetters('กิตติ d บ e').text, 'กิตติ');
+eq('ณ survives', dropStrayLetters('นายสมชาย ณ อยุธยา').text, 'นายสมชาย ณ อยุธยา');
+eq('ณ survives and nothing counted', dropStrayLetters('นายสมชาย ณ อยุธยา').dropped, 0);
+// A syllable carrying its own marks is more than one code point and stays.
+eq('marked syllable is not a single letter', dropStrayLetters('นาย ธิ์ สาย').text, 'นาย ธิ์ สาย');
+eq('clean name untouched', dropStrayLetters('นายวิสุทธิ์ สายแวว').text, 'นายวิสุทธิ์ สายแวว');
+eq('nothing to do reports zero', dropStrayLetters('นายวิสุทธิ์ สายแวว').dropped, 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
