@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { preprocess, cropBox } from './lib/preprocess';
 import { readName } from './lib/ocr';
+import CameraFrame from './CameraFrame';
 
 /* Palette taken from the document itself: laser toner on office paper,
    annotated in blue ballpoint. Sarabun is the typeface Thai government
@@ -27,7 +28,11 @@ const STYLE = `
          background:var(--paper);text-align:center;padding:32px;cursor:pointer}
 .pc-drop:hover,.pc-drop:focus-visible{border-color:var(--ballpoint);outline:none}
 .pc-drop b{font-size:16px;font-weight:600}
-.pc-drop span{font-size:13px;color:var(--ink-2);max-width:38ch;line-height:1.6}
+.pc-drop span{font-size:13px;color:var(--ink-2);max-width:40ch;line-height:1.6}
+.pc-drop .pc-alt{font-size:12px;color:var(--ink-2);opacity:.8}
+.pc-linkbtn{display:block;margin:14px auto 0;background:none;border:none;
+            font-family:inherit;font-size:13.5px;color:var(--ballpoint);
+            text-decoration:underline;cursor:pointer;padding:6px}
 
 /* Signature element: the evidence strip. Each field sits directly under the
    pixels it was read from, so checking is visual rather than remembered. */
@@ -90,6 +95,7 @@ export default function PatientCapture({ onLog }) {
   const [name, setName] = useState('');
   const [log, setLog] = useState([]);
   const [debug, setDebug] = useState(null);
+  const [camera, setCamera] = useState(false);
 
   const evidenceRef = useRef(null);
   const fileRef = useRef(null);
@@ -103,16 +109,15 @@ export default function PatientCapture({ onLog }) {
   // Warm the model up front so the first capture is not the slow one.
   useEffect(() => { import('./lib/ocr').then((m) => m.initOcr()).catch(() => {}); }, []);
 
-  const handleFile = useCallback(async (file) => {
-    if (!file) return;
+  const handleImage = useCallback(async (bitmap, meta = {}) => {
+    if (!bitmap) return;
     setError(null);
     setResult(null);
     setStage('reading-barcode');
 
     try {
-      const bitmap = await createImageBitmap(file);
       const pre = preprocess(bitmap);
-      setDebug({ at: new Date().toISOString(), fileName: file.name, fileSize: file.size, ...pre.debug, ok: pre.ok, error: pre.error, hn: pre.hn });
+      setDebug({ at: new Date().toISOString(), ...meta, ...pre.debug, ok: pre.ok, error: pre.error, hn: pre.hn });
 
       if (!pre.ok) {
         setError(ERRORS[pre.error] ?? 'ประมวลผลภาพไม่สำเร็จ');
@@ -146,11 +151,27 @@ export default function PatientCapture({ onLog }) {
       });
       setStage('done');
     } catch (e) {
-      setDebug((d) => d ?? { at: new Date().toISOString(), fileName: file.name, fileSize: file.size, error: 'exception' });
+      setDebug((d) => d ?? { at: new Date().toISOString(), ...meta, error: 'exception' });
       setError(e.message ?? 'ประมวลผลภาพไม่สำเร็จ');
       setStage('idle');
     }
   }, []);
+
+  const handleFile = useCallback(async (file) => {
+    if (!file) return;
+    try {
+      const bitmap = await createImageBitmap(file);
+      await handleImage(bitmap, { fileName: file.name, fileSize: file.size, via: 'file' });
+    } catch {
+      setError('เปิดไฟล์ภาพไม่ได้');
+      setStage('idle');
+    }
+  }, [handleImage]);
+
+  const handleShot = useCallback(async (bitmap) => {
+    setCamera(false);
+    await handleImage(bitmap, { via: 'camera' });
+  }, [handleImage]);
 
   const reset = () => {
     setResult(null); setHn(''); setName(''); setError(null); setStage('idle');
@@ -172,6 +193,13 @@ export default function PatientCapture({ onLog }) {
   return (
     <div className="pc">
       <style>{STYLE}</style>
+      {camera && (
+        <CameraFrame
+          onCapture={handleShot}
+          onCancel={() => setCamera(false)}
+          onFallback={() => { setCamera(false); fileRef.current?.click(); }}
+        />
+      )}
       <div className="pc-shell">
         <header className="pc-head">
           <div>
@@ -189,16 +217,22 @@ export default function PatientCapture({ onLog }) {
               className="pc-drop"
               role="button"
               tabIndex={0}
-              onClick={() => !busy && fileRef.current?.click()}
-              onKeyDown={(e) => e.key === 'Enter' && !busy && fileRef.current?.click()}
+              onClick={() => !busy && setCamera(true)}
+              onKeyDown={(e) => e.key === 'Enter' && !busy && setCamera(true)}
             >
               <b>{busy ? status : 'ถ่ายภาพกรอบล่าง'}</b>
               <span>
-                ให้เห็น QR code ในกรอบล่างทั้งอัน — ใช้ QR ตัวเดียวหาตำแหน่งทั้งหมด
-                เอียงกี่องศาก็ได้ แต่อย่าถ่ายเฉียงจนกระดาษบิด
+                ต้องเห็น <b>ทั้ง QR code และบรรทัด “ชื่อ-สกุลผู้ป่วย”</b> ในภาพเดียว
+                คือกรอบล่างทั้งกรอบ · เอียงกี่องศาก็ได้ แต่ถือให้ขนานกับกระดาษ
+              </span>
+              <span className="pc-alt">
+                กล้องจะขึ้นกรอบนำและบอกให้ก่อนกดถ่ายว่าภาพนี้อ่านได้หรือไม่
               </span>
             </div>
-            <input ref={fileRef} type="file" accept="image/*" capture="environment"
+            <button className="pc-linkbtn" onClick={() => !busy && fileRef.current?.click()}>
+              หรือเลือกไฟล์ภาพที่ถ่ายไว้แล้ว
+            </button>
+            <input ref={fileRef} type="file" accept="image/*"
                    hidden onChange={(e) => handleFile(e.target.files?.[0])} />
             {error && <div className="pc-err">{error}</div>}
           </section>

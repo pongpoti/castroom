@@ -23,6 +23,24 @@ export const FOOTER_Y = [-0.7, 1.8];
 export const BAND_SCALE = 3;
 
 /**
+ * What has to be inside the photograph: the band above plus the QR itself,
+ * which sits at the origin and so is off the right-hand end of the band. The
+ * capture guide in the UI is drawn from these numbers, so the shape the
+ * operator is asked to fill is the shape the pipeline actually reads.
+ */
+export const CAPTURE_X = [FOOTER_X[0] - 0.8, 1.8];
+export const CAPTURE_Y = [FOOTER_Y[0] - 0.6, FOOTER_Y[1] + 0.5];
+export const CAPTURE_ASPECT =
+  (CAPTURE_X[1] - CAPTURE_X[0]) / (CAPTURE_Y[1] - CAPTURE_Y[0]);
+
+/**
+ * `unit` worth aiming for, as opposed to MIN_UNIT_PX which is the point below
+ * which recognition stops working at all. The name line is about 0.2 units
+ * tall, so this puts roughly 30px of text height in front of the recogniser.
+ */
+export const GOOD_UNIT_PX = 150;
+
+/**
  * Beyond this the capture is angled enough that the pose, extrapolated across
  * the ~13 units between the QR and the name, stops being trustworthy.
  */

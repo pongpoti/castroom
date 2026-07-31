@@ -142,6 +142,31 @@ export function readQrPose(canvas) {
 }
 
 /**
+ * One decode attempt at the given orientation, for live preview feedback.
+ *
+ * The fallback sweep in readQrPose is deliberately skipped here: a preview
+ * frame arrives every few hundred milliseconds and the next one is a better
+ * use of the time than a rotated retry of this one.
+ *
+ * @returns {{hn, unit, squareness}|null}
+ */
+export function probeQr(canvas) {
+  let result;
+  try {
+    result = decodeOne(canvas, [BarcodeFormat.QR_CODE]);
+  } catch {
+    return null;
+  }
+  const pose = poseFromPoints(result.getResultPoints());
+  if (!pose) return null;
+  return {
+    hn: hnFromQrText(result.getText()),
+    unit: pose.unit,
+    squareness: pose.squareness,
+  };
+}
+
+/**
  * Cut a rectangle expressed in pose units, straightening it on the way out.
  *
  * The pose's axes are mapped onto the output axes, so whatever rotation the
