@@ -14,7 +14,7 @@ let servicePromise = null;
 export function initOcr() {
   if (servicePromise) return servicePromise;
   servicePromise = (async () => {
-    const { PaddleOcrService, V5_THAI_MOBILE_MODEL } = await import('ppu-paddle-ocr');
+    const { PaddleOcrService, V5_THAI_MOBILE_MODEL } = await import('ppu-paddle-ocr/web');
     const service = new PaddleOcrService({ recognitionModel: V5_THAI_MOBILE_MODEL });
     await service.initialize();
     return service;
