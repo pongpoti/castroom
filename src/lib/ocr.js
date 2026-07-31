@@ -35,10 +35,62 @@ export function initOcr() {
   return servicePromise;
 }
 
-/** Drop a leading field label such as "ชื่อ-สกุลผู้ป่วย :". */
+/**
+ * Drop a leading field label such as "ชื่อ-สกุลผู้ป่วย :".
+ *
+ * The colon is the usual separator, but recognition drops thin punctuation
+ * often enough to be worth a second route: if there is no colon, start from
+ * the title instead, since every name on this form carries one.
+ */
 function stripLabel(text) {
-  const i = text.indexOf(':');
-  return (i >= 0 ? text.slice(i + 1) : text).trim();
+  const i = text.search(/[:：]/);
+  if (i >= 0) return text.slice(i + 1).trim();
+
+  let best = -1;
+  for (const title of THAI_TITLES) {
+    const at = text.indexOf(title);
+    if (at > 0 && (best < 0 || at < best)) best = at;
+  }
+  return (best > 0 ? text.slice(best) : text).trim();
+}
+
+/** Smallest box covering every word on a line. */
+function unionBox(boxes) {
+  const valid = boxes.filter((b) => b && Number.isFinite(b.x) && Number.isFinite(b.width));
+  if (!valid.length) return null;
+  const x = Math.min(...valid.map((b) => b.x));
+  const y = Math.min(...valid.map((b) => b.y));
+  return {
+    x,
+    y,
+    width: Math.max(...valid.map((b) => b.x + b.width)) - x,
+    height: Math.max(...valid.map((b) => b.y + b.height)) - y,
+  };
+}
+
+/**
+ * Flatten a recognition result into one entry per printed line.
+ *
+ * `recognize` returns `lines` as RecognitionResult[][] — each line is the list
+ * of words on it, not a line object. Treating an entry as a line yields
+ * "[object Object]" and every label match fails, so the words are joined here.
+ */
+export function toLines(raw) {
+  if (Array.isArray(raw?.lines)) {
+    return raw.lines
+      .filter((words) => Array.isArray(words) && words.length)
+      .map((words) => ({
+        text: words.map((w) => String(w?.text ?? '')).join(' ').replace(/\s+/g, ' ').trim(),
+        confidence: words.reduce((a, w) => a + (w?.confidence ?? 0), 0) / words.length,
+        box: unionBox(words.map((w) => w?.box)),
+      }));
+  }
+  const flat = Array.isArray(raw?.results) ? raw.results : (Array.isArray(raw) ? raw : []);
+  return flat.map((w) => ({
+    text: String(w?.text ?? ''),
+    confidence: w?.confidence ?? null,
+    box: w?.box ?? null,
+  }));
 }
 
 /**
@@ -61,23 +113,6 @@ export function parseName(lines) {
       return { name: t, confidence: line.confidence, box: line.box };
     }
   }
-  return null;
-}
-
-/** Normalise the various box shapes the detector may hand back. */
-function toBox(l) {
-  const b = l.box ?? l.bbox ?? l.boundingBox ?? l.points ?? null;
-  if (!b) return null;
-  if (Array.isArray(b) && b.length && Array.isArray(b[0])) {
-    const xs = b.map((p) => p[0]);
-    const ys = b.map((p) => p[1]);
-    return {
-      x: Math.min(...xs), y: Math.min(...ys),
-      width: Math.max(...xs) - Math.min(...xs),
-      height: Math.max(...ys) - Math.min(...ys),
-    };
-  }
-  if (typeof b === 'object' && 'x' in b && 'width' in b) return b;
   return null;
 }
 
@@ -117,12 +152,7 @@ export async function readName(band) {
   const service = await initOcr();
   const raw = await service.recognize(band);
 
-  const rawLines = raw?.lines ?? raw?.results ?? (Array.isArray(raw) ? raw : []);
-  const lines = rawLines.map((l) => ({
-    text: String(l.text ?? l),
-    confidence: l.score ?? l.confidence ?? null,
-    box: toBox(l),
-  }));
+  const lines = toLines(raw);
 
   const hit = parseName(lines);
   const printedHn = parseHn(lines);
