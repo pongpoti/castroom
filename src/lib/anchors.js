@@ -190,17 +190,35 @@ function classify(results) {
   return out;
 }
 
+function summarizeAttempt(angle, results, sym) {
+  return {
+    angle,
+    decoded: results.map((r) => ({
+      format: BarcodeFormat[r.getBarcodeFormat()] ?? String(r.getBarcodeFormat()),
+      text: r.getText(),
+    })),
+    qr: !!sym.qr,
+    footerCount: sym.footer.length,
+    header: !!sym.header,
+  };
+}
+
 /** Decode with a rotation sweep; returns the canvas that actually worked. */
 export function readSymbols(canvas) {
+  const attempts = [];
   for (const angle of RETRY_ANGLES) {
     const probe = rotateCanvas(canvas, angle);
-    const sym = classify(decodeOnce(probe));
+    const results = decodeOnce(probe);
+    const sym = classify(results);
+    attempts.push(summarizeAttempt(angle, results, sym));
     if (sym.qr && sym.footer.length >= 2) {
-      return { symbols: sym, canvas: probe, retryAngle: angle };
+      return { symbols: sym, canvas: probe, retryAngle: angle, attempts };
     }
   }
-  const sym = classify(decodeOnce(canvas));
-  return { symbols: sym, canvas, retryAngle: 0 };
+  const results = decodeOnce(canvas);
+  const sym = classify(results);
+  attempts.push(summarizeAttempt(0, results, sym));
+  return { symbols: sym, canvas, retryAngle: 0, attempts };
 }
 
 /**
