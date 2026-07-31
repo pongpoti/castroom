@@ -1,9 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import PatientCapture from './PatientCapture';
+import CastForm from './CastForm';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <PatientCapture />
+    <CastForm />
   </StrictMode>,
 );
