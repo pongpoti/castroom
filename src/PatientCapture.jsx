@@ -96,7 +96,8 @@ export default function PatientCapture({ onLog }) {
   const fileRef = useRef(null);
 
   useEffect(() => {
-    if (!result?.nameCanvas || !evidenceRef.current) return;
+    if (!evidenceRef.current) return;
+    if (!result?.nameCanvas) { evidenceRef.current.replaceChildren(); return; }
     evidenceRef.current.replaceChildren(result.nameCanvas);
   }, [result]);
 
@@ -121,6 +122,12 @@ export default function PatientCapture({ onLog }) {
       }
 
       setHn(pre.hn);
+      if (!pre.nameCanvas) {
+        setName('');
+        setResult({ ...pre, flags: pre.warnings });
+        setStage('done');
+        return;
+      }
       setStage('reading-name');
       const read = await readName(pre.nameCanvas);
       setName(read.name);
@@ -205,9 +212,11 @@ export default function PatientCapture({ onLog }) {
             <div className="pc-field">
               <div className="pc-label">
                 <span>ชื่อ-สกุล</span>
-                <span className="pc-src">ตรวจกับภาพด้านล่าง</span>
+                <span className={`pc-src ${result.nameCanvas ? '' : 'weak'}`}>
+                  {result.nameCanvas ? 'ตรวจกับภาพด้านล่าง' : 'พิมพ์เอง — ไม่มีภาพให้เทียบ'}
+                </span>
               </div>
-              <div className="pc-evidence" ref={evidenceRef} />
+              {result.nameCanvas && <div className="pc-evidence" ref={evidenceRef} />}
               <input className="pc-input" value={name}
                      onChange={(e) => setName(e.target.value)} aria-label="ชื่อ-สกุล" />
             </div>

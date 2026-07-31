@@ -65,6 +65,34 @@ which the template fixes, rather than centres, which shift with digit count.
 | Footer width ≥ 1500 px | OK |
 | Footer width ≤ 1361 px | fails cleanly |
 
+### Correction: what full-page captures actually do
+
+The table above was measured before the decoder was working, and it does not
+hold for whole-page photographs. Re-measured against `IMG_3830` and
+`IMG_3831`, both 3024×4032:
+
+| | IMG_3830 | IMG_3831 |
+|---|---|---|
+| HN | 1636405 | 1636405 |
+| Sources agreeing | QR + header | QR + header + footer |
+| Footer barcode pair located | no | yes, but off-image coordinates |
+| Name window placed | no | no |
+| Time | 16 s | 15 s |
+
+**HN is solid on both; the name window is placed on neither.** The footer
+Code128 pair is the weak link. It only reads when a rotated retry finds it, and
+`@zxing/library`'s canvas luminance source mutates itself on rotation, so the
+coordinates that come back can fall outside the image — the payload is
+checksummed and safe to trust, the position is not. Anchors that fail the
+bounds check are kept for cross-validating HN and excluded from the geometry,
+which is why a capture can succeed with a confirmed HN and still ask the
+operator to type the name.
+
+`NAME_X` / `NAME_Y` remain uncalibrated against a capture where the frame
+actually builds. Fixing the name half means making the footer pair decode with
+trustworthy coordinates first; tuning the constants before that would be
+fitting to noise.
+
 Rotation beyond about 12° needs the retry sweep: readers tolerate only mild
 skew, so failed passes are retried on rotated copies before giving up.
 
