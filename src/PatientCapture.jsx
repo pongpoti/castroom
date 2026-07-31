@@ -155,6 +155,7 @@ export default function PatientCapture({ onLog }) {
         })),
         ocrLineCount: read.lines.length,
         ocrRawText: read.rawText,
+        ocrDroppedMarks: read.droppedMarks,
         ocrName: read.name,
         ocrPrintedHn: read.printedHn,
       }));
