@@ -16,6 +16,39 @@ const THAI_TITLES = ['นางสาว', 'เด็กชาย', 'เด็�
 let servicePromise = null;
 
 /**
+ * Detection and recognition tuning, aimed squarely at Thai diacritics.
+ *
+ * The library's defaults assume a page of Latin text. Thai stacks tone marks
+ * and the karan above the line and vowels below it, and those marks are what
+ * decide whether วิสุทธิ์ reads as วิสุทธิ์ or as วิสุทธิ. Every value here is a
+ * documented default being moved for a specific observed failure, so it is
+ * easy to walk any of them back.
+ */
+export const OCR_TUNING = {
+  detection: {
+    // Default 0.4 of box height. Too tight for a script that stacks marks
+    // above and below: the crop clips them before recognition sees them.
+    paddingVertical: 0.9,
+    // Default "auto" caps the long side at 1920. The band is deliberately
+    // upscaled before this point, and the cap throws that away again — fine
+    // marks are the first detail to disappear when it does.
+    maxSideLength: 2560,
+    // Default 20px^2. A detached tone mark clears that easily, gets detected
+    // as its own region, and is then recognised as a stray syllable of its
+    // own. The real lines here are orders of magnitude larger.
+    minimumAreaThreshold: 120,
+  },
+  recognition: {
+    // Default 48. The marks live in the top and bottom fifths of the line, so
+    // vertical resolution is worth more here than it would be for Latin.
+    imageHeight: 64,
+    // Default 0.5. Upstream notes noise reads at 0.2-0.45 and real text at
+    // 0.65+, and stray fragments are exactly what we are trying to drop.
+    minimumConfidence: 0.6,
+  },
+};
+
+/**
  * Load the PP-OCRv5 Thai models once, then reuse them.
  *
  * The preset goes under `model`, which is the option the service actually
@@ -28,7 +61,10 @@ export function initOcr() {
   if (servicePromise) return servicePromise;
   servicePromise = (async () => {
     const { PaddleOcrService, V5_THAI_MOBILE_MODEL } = await import('ppu-paddle-ocr/web');
-    const service = new PaddleOcrService({ model: V5_THAI_MOBILE_MODEL });
+    const service = new PaddleOcrService({
+      model: V5_THAI_MOBILE_MODEL,
+      ...OCR_TUNING,
+    });
     await service.initialize();
     return service;
   })();
