@@ -142,6 +142,15 @@ export default function PatientCapture({ onLog }) {
         extraFlags.push(`HN ในภาพอ่านได้เป็น ${read.printedHn} ไม่ตรงกับ QR (${pre.hn}) — ตรวจสอบก่อนบันทึก`);
       }
 
+      // Recording what recognition actually returned makes a parsing failure
+      // visible in the panel instead of only showing up as an empty field.
+      setDebug((d) => ({
+        ...d,
+        ocrLines: read.lines.map((l) => l.text),
+        ocrName: read.name,
+        ocrPrintedHn: read.printedHn,
+      }));
+
       setResult({
         ...pre,
         ...read,
