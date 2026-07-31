@@ -106,8 +106,8 @@ export default function PatientCapture({ onLog }) {
     evidenceRef.current.replaceChildren(result.evidence);
   }, [result]);
 
-  // Warm the model up front so the first capture is not the slow one.
-  useEffect(() => { import('./lib/ocr').then((m) => m.initOcr()).catch(() => {}); }, []);
+  // The local model is only a fallback now, so it is no longer fetched up
+  // front — that download is tens of megabytes and most captures never need it.
 
   const handleImage = useCallback(async (bitmap, meta = {}) => {
     if (!bitmap) return;
@@ -156,6 +156,8 @@ export default function PatientCapture({ onLog }) {
         ocrLineCount: read.lines.length,
         ocrRawText: read.rawText,
         ocrDroppedMarks: read.droppedMarks,
+        ocrBackend: read.backend,
+        ocrBackendError: read.backendError,
         ocrName: read.name,
         ocrPrintedHn: read.printedHn,
       }));
@@ -223,7 +225,8 @@ export default function PatientCapture({ onLog }) {
           <div>
             <div className="pc-title">ลงทะเบียนผู้ป่วย</div>
             <div className="pc-sub">
-              ถ่ายเฉพาะกรอบล่างของใบบันทึกการตรวจรักษา · ประมวลผลในเครื่อง ไม่ส่งข้อมูลออก
+              ถ่ายเฉพาะกรอบล่างของใบบันทึกการตรวจรักษา · HN อ่านในเครื่องจาก QR
+              · <b>ภาพกรอบล่างถูกส่งไปยัง Typhoon OCR เพื่ออ่านชื่อ</b>
             </div>
           </div>
           <div className="pc-sub">{log.length} รายการในรอบนี้</div>

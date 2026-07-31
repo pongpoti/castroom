@@ -1,7 +1,10 @@
 # Patient log — footer capture
 
 Reads **HN** and **ชื่อ-สกุล** from the footer of a HosXP OPD record.
-Everything runs in the browser; no image or identifier leaves the device.
+
+HN is decoded in the browser from the QR and never leaves the device. The
+footer band **is** sent to Typhoon OCR to read the name — see *Where the data
+goes* below before deploying this anywhere real.
 
 ## How it works
 
@@ -67,6 +70,25 @@ resolution:
 The previous barcode-anchored pipeline took 15 s and 67 s on the same two
 captures and placed the name window on neither.
 
+## Why the name is not read on device
+
+PP-OCRv5 Thai mobile reads this form well and still loses the marks. From a
+real capture's debug output:
+
+| Printed | Read | Confidence |
+|---|---|---|
+| `วิสุทธิ์` | `วิสุทธิ` plus a stray `ส` | 0.923 |
+| `แพทย์ผู้สั่ง` | `แพทย์ผู้สัง` | 0.936 |
+| `จิราพัฒนพงศ์` | `จิราพัฒเนพงศ์` | 0.936 |
+
+The model is confident and drops the mark anyway, so this is a capability
+limit rather than a threshold to tune. An earlier attempt to tune it — padding,
+input height, confidence floor — made things strictly worse and is recorded in
+`ocr.js` so it is not repeated.
+
+Stray letters left behind by either model are still cleaned up: a lone letter
+is not a word in a Thai name, with `ณ` exempt as a genuine one-letter word.
+
 ## Cross-checking the HN
 
 The QR's error correction is the primary guarantee. As a second source, the HN
@@ -78,16 +100,39 @@ Decoding the footer Code128 pair as a cross-check was tried and removed: it did
 not decode on either reference capture, at any scale, deskewed or raw. Shipping
 a check that never fires would have been worse than saying so.
 
+## Where the data goes
+
+| | Stays on device | Leaves the device |
+|---|---|---|
+| HN | decoded from the QR, error-corrected | — |
+| Name | — | the footer band image goes to Typhoon OCR |
+
+The band contains the patient's name **and** their HN in printed digits, so a
+capture sent for recognition carries both identifiers. That is a deliberate
+trade: PP-OCR reads this form confidently and still drops Thai tone marks, and
+no amount of tuning recovers a character the model does not emit.
+
+The API key is held by `api/ocr.js`, a serverless function. It is never shipped
+to the browser, because anything in the bundle can be read and spent by anyone
+who loads the page.
+
 ## Setup
 
 ```bash
 npm install
 npm run dev
+npm test
 ```
 
-Models are warmed on mount so the first capture is not the slow one. Move
-`readName` into a Web Worker before production — model load and inference will
-otherwise block the UI.
+Set `TYPHOON_API_KEY` in the deployment's environment. Without it `/api/ocr`
+answers 503 and the app falls back to the local model, which still reads the
+name but drops diacritics. `TYPHOON_MODEL` overrides the model id, which
+defaults to `typhoon-ocr`.
+
+The local model is no longer fetched on mount — it is tens of megabytes and
+most captures never need it. Move recognition into a Web Worker before
+production if the fallback path is expected to be common; the remote path does
+not block the UI, but local inference does.
 
 ## What still needs measuring
 
