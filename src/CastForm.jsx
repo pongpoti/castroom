@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { preprocess, cropBox } from './lib/preprocess';
 import { readName } from './lib/ocr';
 import CameraFrame from './CameraFrame';
-import BodyDiagram, { REGIONS, regionLabel } from './BodyDiagram';
+import { CAST_TYPES, castType, castItemLabel } from './lib/casts';
 
 /* Palette: Play Blue (primary), Nude Stone (surfaces/body fill),
    Stained Cork (accent/selected). Cartoonish but restrained — big
@@ -71,15 +71,25 @@ const STYLE = `
 .cf2-err{font-size:13px;color:var(--cork);line-height:1.6;margin-top:10px;text-align:center}
 .cf2-status{font-size:13.5px;color:var(--blue);text-align:center;padding:10px 0;font-weight:600}
 
-.bd{display:flex;flex-direction:column;align-items:center}
-.bd-svg{width:100%;max-width:260px;height:auto;touch-action:manipulation}
-.bd-shape{fill:var(--nude);stroke:var(--blue);stroke-width:3;
-          transition:fill .12s ease,stroke .12s ease}
-.bd-shape.bd-static{pointer-events:none}
-.bd-shape.sel{fill:var(--cork);stroke:var(--blue-dark)}
-.bd-seg{cursor:pointer}
-.bd-seg:hover .bd-shape:not(.sel){fill:#FFC79A}
-.bd-caption{font-size:11.5px;color:var(--ink-2);margin-top:10px;text-align:center}
+.cf2-castgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.cf2-castbtn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+            border:2.5px solid var(--nude);background:var(--nude-soft);border-radius:16px;
+            padding:12px 14px;cursor:pointer;font-family:inherit;text-align:left}
+.cf2-castbtn:hover{border-color:var(--blue)}
+.cf2-castbtn.active{border-color:var(--blue);background:#fff;
+                    box-shadow:0 0 0 2px var(--blue) inset}
+.cf2-castbtn-th{font-size:14px;font-weight:700;color:var(--ink)}
+.cf2-castbtn-site{font-size:11.5px;color:var(--ink-2)}
+
+.cf2-sideprompt{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+                background:var(--cork-soft);border-radius:14px;padding:12px 14px;margin-top:12px}
+.cf2-sideprompt b{font-size:13.5px;color:var(--cork);flex:1 1 auto;min-width:120px}
+.cf2-sidebtn{border:2px solid var(--cork);background:#fff;color:var(--cork);
+            border-radius:12px;padding:8px 16px;font-family:inherit;font-size:14px;
+            font-weight:700;cursor:pointer}
+.cf2-sidebtn:hover{background:var(--cork);color:#fff}
+.cf2-sidecancel{background:none;border:none;color:var(--ink-2);font-family:inherit;
+                font-size:13px;text-decoration:underline;cursor:pointer;padding:6px}
 
 .cf2-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;min-height:1px}
 .cf2-chip{display:inline-flex;align-items:center;gap:6px;background:var(--cork-soft);
@@ -131,7 +141,11 @@ export default function CastForm({ onLog }) {
   const [name, setName] = useState('');
   const [camera, setCamera] = useState(false);
 
-  const [bodyParts, setBodyParts] = useState(new Set());
+  // Each item is {id, type, side}; side is null for the two types that don't
+  // track laterality. `pendingType` holds a side-requiring type the operator
+  // has tapped but not yet resolved to a side.
+  const [castItems, setCastItems] = useState([]);
+  const [pendingType, setPendingType] = useState(null);
   const [log, setLog] = useState([]);
 
   const evidenceRef = useRef(null);
@@ -204,12 +218,25 @@ export default function CastForm({ onLog }) {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const toggleBodyPart = (id) => {
-    setBodyParts((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  /** Tapping a badge either adds it directly or opens the side prompt. */
+  const pickCastType = (id) => {
+    const type = castType(id);
+    if (!type) return;
+    if (!type.needsSide) {
+      setCastItems((prev) => [...prev, { id: `${Date.now()}-${id}`, type: id, side: null }]);
+      return;
+    }
+    setPendingType(id);
+  };
+
+  const resolveSide = (side) => {
+    if (!pendingType) return;
+    setCastItems((prev) => [...prev, { id: `${Date.now()}-${pendingType}`, type: pendingType, side }]);
+    setPendingType(null);
+  };
+
+  const removeCastItem = (id) => {
+    setCastItems((prev) => prev.filter((it) => it.id !== id));
   };
 
   const photoBusy = photoStage === 'reading-barcode' || photoStage === 'reading-name';
@@ -217,7 +244,7 @@ export default function CastForm({ onLog }) {
     : photoStage === 'reading-name' ? 'กำลังอ่านชื่อ…' : '';
 
   const canSubmit = date && hn.trim().length >= 4 && name.trim().length >= 3
-    && bodyParts.size > 0 && !photoBusy;
+    && castItems.length > 0 && !photoBusy;
 
   const submit = () => {
     if (!canSubmit) return;
@@ -226,13 +253,14 @@ export default function CastForm({ onLog }) {
       date,
       hn: hn.trim(),
       name: name.trim(),
-      bodyParts: [...bodyParts],
+      casts: castItems,
       at: new Date().toISOString(),
     };
     setLog((l) => [entry, ...l]);
     onLog?.(entry);
     resetPhoto();
-    setBodyParts(new Set());
+    setCastItems([]);
+    setPendingType(null);
   };
 
   return (
@@ -327,16 +355,39 @@ export default function CastForm({ onLog }) {
         <section className="cf2-card">
           <div className="cf2-step">
             <span className="cf2-step-n">3</span>
-            <span className="cf2-step-t">ตำแหน่งที่ใส่เฝือก</span>
+            <span className="cf2-step-t">ชนิดเฝือกที่ใส่</span>
           </div>
-          <BodyDiagram selected={bodyParts} onToggle={toggleBodyPart} />
+
+          <div className="cf2-castgrid">
+            {CAST_TYPES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`cf2-castbtn ${pendingType === t.id ? 'active' : ''}`}
+                onClick={() => pickCastType(t.id)}
+              >
+                <span className="cf2-castbtn-th">{t.thai}</span>
+                <span className="cf2-castbtn-site">{t.site ?? t.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {pendingType && (
+            <div className="cf2-sideprompt">
+              <b>{castType(pendingType)?.thai} — ข้างไหน?</b>
+              <button className="cf2-sidebtn" onClick={() => resolveSide('left')}>ซ้าย</button>
+              <button className="cf2-sidebtn" onClick={() => resolveSide('right')}>ขวา</button>
+              <button className="cf2-sidecancel" onClick={() => setPendingType(null)}>ยกเลิก</button>
+            </div>
+          )}
+
           <div className="cf2-chips">
-            {bodyParts.size === 0
-              ? <span className="cf2-empty">ยังไม่ได้เลือกตำแหน่ง — แตะที่แผนภาพ</span>
-              : [...bodyParts].map((id) => (
-                <span className="cf2-chip" key={id}>
-                  {regionLabel(id)}
-                  <button onClick={() => toggleBodyPart(id)} aria-label={`เอา ${regionLabel(id)} ออก`}>×</button>
+            {castItems.length === 0
+              ? <span className="cf2-empty">ยังไม่ได้เลือกเฝือก — แตะที่รายการด้านบน</span>
+              : castItems.map((it) => (
+                <span className="cf2-chip" key={it.id}>
+                  {castItemLabel(it)}
+                  <button onClick={() => removeCastItem(it.id)} aria-label={`เอา ${castItemLabel(it)} ออก`}>×</button>
                 </span>
               ))}
           </div>
@@ -353,8 +404,8 @@ export default function CastForm({ onLog }) {
                 </div>
                 <div className="cf2-entry-name">{r.name}</div>
                 <div className="cf2-entry-chips">
-                  {r.bodyParts.map((id) => (
-                    <span className="cf2-entry-chip" key={id}>{regionLabel(id)}</span>
+                  {r.casts.map((it) => (
+                    <span className="cf2-entry-chip" key={it.id}>{castItemLabel(it)}</span>
                   ))}
                 </div>
               </div>
