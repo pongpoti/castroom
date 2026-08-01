@@ -5,6 +5,7 @@ import CameraFrame from './CameraFrame';
 import CastIcon from './CastIcons';
 import { CAST_TYPES, castLabel } from './lib/casts';
 import BrandMark from './BrandMark';
+import * as outbox from './lib/outbox';
 
 /*
  * Palette taken from a four-swatch reference: a pale yellow, a yellow-green,
@@ -170,7 +171,7 @@ const STYLE = `
 .cf2-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;
          border-top:1px solid var(--border);
          padding:14px 16px calc(14px + env(safe-area-inset-bottom));
-         display:flex;justify-content:center;z-index:10}
+         display:flex;flex-direction:column;align-items:center;z-index:10}
 .cf2-submit{width:100%;max-width:608px;padding:15px;border-radius:14px;border:none;
            background:var(--primary);color:#fff;font-family:inherit;font-size:16px;
            font-weight:600;cursor:pointer}
@@ -188,6 +189,12 @@ const STYLE = `
 .cf2-entry-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .cf2-entry-chip{background:var(--primary-100);color:var(--primary-700);border-radius:999px;
                 padding:4px 10px;font-size:11.5px;font-weight:500}
+/* A "sent" entry carries no badge at all — that is the expected outcome and
+   does not need to compete for attention with the two that do. */
+.cf2-sync{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;flex:none}
+.cf2-sync.pending{background:var(--pale-100);color:#8A6D1A}
+.cf2-sync.failed{background:var(--warn-soft);color:var(--warn)}
+.cf2-outbox-note{font-size:12.5px;color:var(--ink-2);text-align:center;padding:0 0 8px}
 `;
 
 // HN at this hospital is always a 7-digit number. Both the manual-entry
@@ -244,6 +251,7 @@ export default function CastForm({ onLog }) {
   // +/− stepper to its right reaches counts beyond 1.
   const [castItems, setCastItems] = useState(new Map());
   const [log, setLog] = useState([]);
+  const [outboxPending, setOutboxPending] = useState(0);
 
   const setCastCount = (id, count) => {
     setCastItems((prev) => {
@@ -345,20 +353,92 @@ export default function CastForm({ onLog }) {
   const canSubmit = date && hn.trim().length === HN_LEN && name.trim().length >= 3
     && castItems.size > 0 && !photoBusy;
 
+  // POSTs one queued visit. The outbox decides whether a failure here is
+  // worth retrying: a 4xx means the server already rejected the shape of
+  // the data, and sending the same bytes again would just fail again.
+  const sendToServer = useCallback(async (visit) => {
+    try {
+      const r = await fetch('/api/log', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(visit),
+      });
+      if (r.ok) return { ok: true };
+      return { ok: false, retry: r.status >= 500 || r.status === 429 };
+    } catch {
+      return { ok: false, retry: true };
+    }
+  }, []);
+
+  // Flushes the outbox, then reconciles each visible log entry's sync badge
+  // against what is still queued — anything no longer pending or failed in
+  // the outbox has been confirmed sent, and clearSettled() lets it drop out
+  // of localStorage once the UI no longer needs it there.
+  const syncOutbox = useCallback(async () => {
+    await outbox.flush(sendToServer);
+    const stillQueued = new Map(outbox.list().map((r) => [r.visit.visit_id, r.status]));
+    setLog((l) => l.map((entry) => ({
+      ...entry,
+      sync: stillQueued.get(entry.visitId) ?? 'sent',
+    })));
+    outbox.clearSettled();
+    setOutboxPending(outbox.pendingCount());
+  }, [sendToServer]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer;
+
+    const scheduleNext = () => {
+      if (cancelled) return;
+      const queued = outbox.list().filter((r) => r.status === 'pending');
+      if (queued.length === 0) return;
+      const attempts = Math.max(...queued.map((r) => r.attempts));
+      timer = setTimeout(runSync, outbox.backoffMs(attempts + 1));
+    };
+    const runSync = async () => {
+      await syncOutbox();
+      scheduleNext();
+    };
+
+    runSync(); // catches anything left queued from a previous page load
+    window.addEventListener('online', runSync);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      window.removeEventListener('online', runSync);
+    };
+  }, [syncOutbox]);
+
   const submit = () => {
     if (!canSubmit) return;
+    const visitId = crypto.randomUUID();
+    const casts = [...castItems].map(([id, count]) => ({ id, count }));
     const entry = {
       id: `${Date.now()}`,
+      visitId,
       date,
       hn: hn.trim(),
       name: name.trim(),
-      casts: [...castItems].map(([id, count]) => ({ id, count })),
+      casts,
       at: new Date().toISOString(),
+      sync: 'pending',
     };
+    outbox.enqueue({
+      visit_id: visitId,
+      shift_date: date,
+      hn: hn.trim(),
+      name: name.trim(),
+      source: manual ? 'manual' : 'qr',
+      casts,
+    });
+    setOutboxPending(outbox.pendingCount());
     setLog((l) => [entry, ...l]);
     onLog?.(entry);
     resetPhoto();
     setCastItems(new Map());
+    syncOutbox();
   };
 
   return (
@@ -541,7 +621,11 @@ export default function CastForm({ onLog }) {
               <div className="cf2-entry" key={r.id}>
                 <div className="cf2-entry-top">
                   <span>{r.date}</span>
-                  <span className="cf2-entry-hn">{r.hn}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {r.sync === 'pending' && <span className="cf2-sync pending">รอส่ง</span>}
+                    {r.sync === 'failed' && <span className="cf2-sync failed">ส่งไม่สำเร็จ</span>}
+                    <span className="cf2-entry-hn">{r.hn}</span>
+                  </span>
                 </div>
                 <div className="cf2-entry-name">{r.name}</div>
                 <div className="cf2-entry-chips">
@@ -558,6 +642,11 @@ export default function CastForm({ onLog }) {
       </div>
 
       <div className="cf2-bar">
+        {outboxPending > 0 && (
+          <div className="cf2-outbox-note">
+            กำลังส่งข้อมูล {outboxPending} รายการ — อย่าปิดแอปจนกว่าจะส่งครบ
+          </div>
+        )}
         <button className="cf2-submit" disabled={!canSubmit} onClick={submit}>
           บันทึกข้อมูล
         </button>
