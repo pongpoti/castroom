@@ -24,3 +24,10 @@ const BY_ID = Object.fromEntries(CAST_TYPES.map((c) => [c.id, c]));
 export function castLabel(id) {
   return BY_ID[id]?.label ?? id;
 }
+
+/**
+ * The two types with no fixed anatomical site — CastDiagram has nowhere
+ * principled to put them, so they stay as plain badges next to it rather
+ * than being forced onto a made-up spot on the figure.
+ */
+export const STANDALONE_CAST_IDS = ['buddy', 'fingerSplint'];
