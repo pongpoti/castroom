@@ -2,8 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { preprocess, cropBox } from './lib/preprocess';
 import { readName } from './lib/ocr';
 import CameraFrame from './CameraFrame';
-import CastDiagram from './CastDiagram';
-import { CAST_TYPES, castLabel, STANDALONE_CAST_IDS } from './lib/casts';
+import { CAST_TYPES, castLabel } from './lib/casts';
 
 /*
  * Palette taken from a four-swatch reference: a pale yellow, a yellow-green,
@@ -103,7 +102,7 @@ const STYLE = `
 .cf2-err{font-size:13px;color:var(--warn);line-height:1.6;margin-top:10px;text-align:center}
 .cf2-status{font-size:13.5px;color:var(--primary);text-align:center;padding:10px 0;font-weight:500}
 
-.cf2-castgrid{display:flex;flex-wrap:wrap;gap:14px}
+.cf2-castgrid{display:flex;flex-wrap:wrap;gap:22px}
 .cf2-castbtn{width:fit-content;border:1.5px solid var(--border-strong);
             background:var(--surface);color:var(--ink);
             border-radius:999px;padding:9px 18px;cursor:pointer;font-family:inherit;
@@ -120,19 +119,6 @@ const STYLE = `
   .cf2-castgrid{flex-direction:column;align-items:center}
 }
 
-.cd{display:flex;flex-direction:column;align-items:center;margin-bottom:4px}
-.cd-svg{width:100%;max-width:230px;height:auto;touch-action:manipulation}
-.cd-shape{fill:var(--card);stroke:var(--border-strong);stroke-width:2.5;
-          transition:fill .12s ease,stroke .12s ease}
-.cd-shape.cd-static{fill:var(--surface);stroke:var(--border);pointer-events:none}
-.cd-shape.cd-big{stroke-width:2}
-.cd-zone{cursor:pointer}
-.cd-zone:hover:not(.active) .cd-shape{stroke:var(--primary)}
-.cd-zone.active .cd-shape{fill:var(--primary);stroke:var(--primary-700)}
-.cd-caption{font-size:11.5px;color:var(--ink-2);margin-top:8px;text-align:center;max-width:32ch}
-
-.cf2-standalone{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;
-                margin-top:16px;padding-top:16px;border-top:1px dashed var(--border)}
 
 .cf2-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;min-height:1px}
 .cf2-chip{display:inline-flex;align-items:center;gap:6px;background:var(--primary-100);
@@ -390,10 +376,8 @@ export default function CastForm({ onLog }) {
             <span className="cf2-step-t">ใส่เฝือกแบบไหน ?</span>
           </div>
 
-          <CastDiagram selected={castItems} onToggle={toggleCastType} />
-
-          <div className="cf2-castgrid cf2-standalone">
-            {CAST_TYPES.filter((t) => STANDALONE_CAST_IDS.includes(t.id)).map((t) => (
+          <div className="cf2-castgrid">
+            {CAST_TYPES.map((t) => (
               <button
                 key={t.id}
                 type="button"
