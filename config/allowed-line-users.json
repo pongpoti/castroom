@@ -12,6 +12,10 @@
     "matching. LINE_ALLOWED_USER_IDS in the environment is merged with this",
     "list, for granting access without a deploy."
   ],
-  "allow": [],
-  "who": {}
+  "allow": [
+    "U5b11e21a69e4213ab29ee4ecbf045f83"
+  ],
+  "who": {
+    "U5b11e21a69e4213ab29ee4ecbf045f83": "admin"
+  }
 }
