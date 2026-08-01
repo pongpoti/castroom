@@ -32,18 +32,25 @@ const STYLE = `
 .cf2 *{box-sizing:border-box}
 .cf2 :focus-visible{outline:2.5px solid var(--primary);outline-offset:2px}
 
-/* #0F6B4A is a darkened pull from the same leaf-green swatch as --leaf —
-   dark enough for white text at 6.52:1, but distinct enough from --primary
-   to actually read as a gradient rather than a barely-there tint shift. */
-.cf2-hero{background:linear-gradient(135deg,var(--primary) 0%,#0F6B4A 100%);
+/* A livelier header than the near-black teal it replaces: a three-stop sweep
+   from deep emerald through to a bright grass green, shifting hue as well as
+   lightness so it reads as a real gradient rather than one colour fading.
+   #12873C is as bright as this can go — at 4.61:1 against white it is the
+   last step that still clears AA for normal text, and every stop is checked
+   against white rather than only the endpoints. The header is the one place
+   these greens appear; --primary stays the teal everything else agrees on. */
+.cf2-hero{background:linear-gradient(135deg,#06543A 0%,#0E7A3F 55%,#12873C 100%);
           border-radius:0 0 28px 28px;
           padding:22px 20px 26px;display:flex;align-items:center;gap:14px;
-          box-shadow:0 4px 16px rgba(7,56,53,.18)}
+          box-shadow:0 4px 16px rgba(6,84,58,.22)}
 .cf2-hero-icon{width:44px;height:44px;flex:none;border-radius:14px;
                background:rgba(255,255,255,.94);display:flex;
                align-items:center;justify-content:center}
 .cf2-title{font-size:24px;font-weight:700;letter-spacing:.02em;color:#fff}
-.cf2-sub{font-size:15px;color:#fff;opacity:.88;margin-top:3px}
+/* Full white, not the .88 it used to carry: against the brighter end of the
+   new gradient that fade dropped the subtitle to 3.95:1, under the 4.5:1 it
+   needs at this size. Hierarchy comes from size and weight instead. */
+.cf2-sub{font-size:15px;color:#fff;margin-top:3px}
 
 .cf2-shell{max-width:640px;margin:0 auto;padding:16px;
            display:flex;flex-direction:column;gap:14px}
