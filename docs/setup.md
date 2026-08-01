@@ -219,19 +219,19 @@ in the Neon SQL Editor run `select * from cast_log order by id desc limit
 
 ## When it does not work
 
-Every block screen but one prints its verdict in small type at the bottom —
-`external-browser` shows just the "เปิดใน LINE OA เวรห้องเฝือก" message, since
-that screen's own text already says what to do. The word on the others tells
-you which step below to revisit.
+The block screen shows only a Thai title and message — no error code or
+verdict string, on purpose, so an operator holding a phone never sees a
+raw identifier like `auth-failed`. The title text is what tells you which
+row below applies.
 
-| Verdict on screen | Meaning | Fix |
+| Title shown | Meaning | Fix |
 |---|---|---|
-| `not-configured` | No `VITE_LIFF_ID` (or `DATABASE_URL`/`SESSION_SECRET` for the server side) | Set it, then **redeploy** — `VITE_LIFF_ID` is build-time |
-| (shown as "เปิดใน LINE OA เวรห้องเฝือก", no code) | Not opened through LINE | Use the `liff.line.me` link, not the vercel.app one |
-| `desktop` | LINE's desktop client | Use a phone or tablet |
-| `init-failed` | `liff.init()` threw | LIFF ID wrong, or the LIFF **Endpoint URL** does not match the deployment |
-| `not-allowed` | Login worked, id not on the allowlist | Step 7. Check the two channels share a provider |
-| `auth-failed` | `/api/auth` refused or was unreachable | Missing env vars (503), or the `openid` scope is off |
+| "ยังไม่ได้ตั้งค่า" | No `VITE_LIFF_ID` (or `DATABASE_URL`/`SESSION_SECRET` for the server side) | Set it, then **redeploy** — `VITE_LIFF_ID` is build-time |
+| "เปิดผ่าน LINE เท่านั้น" | Not opened through LINE | Use the `liff.line.me` link, not the vercel.app one |
+| "ใช้บนมือถือหรือแท็บเล็ตเท่านั้น" | LINE's desktop client | Use a phone or tablet |
+| "เชื่อมต่อ LINE ไม่สำเร็จ" | `liff.init()` threw | LIFF ID wrong, or the LIFF **Endpoint URL** does not match the deployment |
+| "ไม่มีสิทธิ์เข้าใช้งาน" | Login worked, id not on the allowlist | Step 7. Check the two channels share a provider |
+| "ตรวจสอบสิทธิ์ไม่สำเร็จ" | `/api/auth` refused or was unreachable | Missing env vars (503), or the `openid` scope is off |
 
 **Nothing arrives in Telegram from a LINE message.** Check in order:
 webhook URL exact and ends `/api/line-webhook`; *Use webhook* is on;
