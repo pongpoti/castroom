@@ -107,12 +107,14 @@ const STYLE = `
 .cf2-err{font-size:13px;color:var(--warn);line-height:1.6;margin-top:10px;text-align:center}
 .cf2-status{font-size:13.5px;color:var(--primary);text-align:center;padding:10px 0;font-weight:500}
 
-.cf2-castgrid{display:flex;flex-wrap:wrap;gap:26px}
+.cf2-castgrid{display:flex;flex-wrap:wrap;gap:18px 26px}
+.cf2-castrow{display:flex;align-items:center;gap:10px}
 /* --icon-bg is the badge's own background, handed to the icon so the seams
    it cuts across each cast read as gaps on both the unselected and the
    selected badge without the icon tracking state itself. */
 .cf2-castbtn{--icon-bg:var(--surface);
-            width:fit-content;border:1.5px solid var(--border-strong);
+            flex:none;width:fit-content;white-space:nowrap;
+            border:1.5px solid var(--border-strong);
             background:var(--surface);color:var(--ink);
             border-radius:999px;padding:10px 20px;cursor:pointer;font-family:inherit;
             font-size:16px;font-weight:500;text-align:center;
@@ -123,10 +125,24 @@ const STYLE = `
                     font-weight:600;box-shadow:0 3px 10px rgba(7,56,53,.28)}
 .cf2-castbtn-icon{flex:none;display:flex;align-items:center;color:inherit}
 
+/* The quantity stepper sits to the right of its badge. Zero-state is
+   deliberately faint — the count only earns full contrast once a tap has
+   made it mean something. */
+.cf2-counter{flex:none;display:flex;align-items:center;gap:2px;
+            border:1.5px solid var(--border-strong);border-radius:999px;
+            padding:3px;background:var(--surface)}
+.cf2-counter.zero{opacity:.5}
+.cf2-counter-btn{width:26px;height:26px;border-radius:50%;border:none;background:none;
+                 color:var(--primary);font-size:16px;font-weight:700;cursor:pointer;
+                 display:flex;align-items:center;justify-content:center;line-height:1}
+.cf2-counter-btn:hover:not(:disabled){background:var(--primary-100)}
+.cf2-counter-btn:disabled{color:var(--ink-2);cursor:not-allowed}
+.cf2-counter-n{min-width:18px;text-align:center;font-size:14px;font-weight:600;color:var(--ink)}
+
 /* One column per row on a phone: badges are easier to hit and read stacked
-   than wrapped into a ragged multi-per-row grid at narrow widths. Each badge
-   stays fit-content and centers in the column rather than stretching full
-   width, so a short label like "U Slab" doesn't turn into an oddly empty bar. */
+   than wrapped into a ragged multi-per-row grid at narrow widths. Each row
+   centers in the column rather than stretching full width, so a short label
+   like "U Slab" doesn't turn into an oddly empty bar. */
 @media (max-width:480px){
   .cf2-castgrid{flex-direction:column;align-items:center}
 }
@@ -164,6 +180,19 @@ const STYLE = `
                 padding:4px 10px;font-size:11.5px;font-weight:500}
 `;
 
+// HN at this hospital is always a 7-digit number. Both the manual-entry
+// field and the field showing a QR-read HN funnel through this on every
+// keystroke, so a pasted or mistyped non-digit — or an 8th digit — is
+// rejected with the same message everywhere rather than silently truncated.
+const HN_LEN = 7;
+function sanitizeHn(raw, onReject) {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length !== raw.length || digits.length > HN_LEN) {
+    onReject?.();
+  }
+  return digits.slice(0, HN_LEN);
+}
+
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -190,8 +219,20 @@ export default function CastForm({ onLog }) {
   // so a hand-entered record carries exactly what a scanned one does.
   const [manual, setManual] = useState(false);
 
-  const [castItems, setCastItems] = useState(new Set());
+  // A count per cast type rather than a plain selection, so the same badge
+  // can record e.g. two buddy splints in one visit. The badge is still a
+  // single tap target: tapping it steps the count 0→1 or back to 0, while a
+  // +/− stepper to its right reaches counts beyond 1.
+  const [castItems, setCastItems] = useState(new Map());
   const [log, setLog] = useState([]);
+
+  const setCastCount = (id, count) => {
+    setCastItems((prev) => {
+      const next = new Map(prev);
+      count > 0 ? next.set(id, count) : next.delete(id);
+      return next;
+    });
+  };
 
   const evidenceRef = useRef(null);
   const fileRef = useRef(null);
@@ -265,18 +306,16 @@ export default function CastForm({ onLog }) {
   };
 
   const toggleCastType = (id) => {
-    setCastItems((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setCastCount(id, castItems.has(id) ? 0 : 1);
   };
+
+  const alertBadHn = () => window.alert('กรุณากรอก HN เป็นตัวเลข 0-9 เท่านั้น ไม่เกิน 7 หลัก');
 
   const photoBusy = photoStage === 'reading-barcode' || photoStage === 'reading-name';
   const photoStatus = photoStage === 'reading-barcode' ? 'กำลังอ่าน QR code…'
     : photoStage === 'reading-name' ? 'กำลังอ่านชื่อ…' : '';
 
-  const canSubmit = date && hn.trim().length >= 4 && name.trim().length >= 3
+  const canSubmit = date && hn.trim().length === HN_LEN && name.trim().length >= 3
     && castItems.size > 0 && !photoBusy;
 
   const submit = () => {
@@ -286,13 +325,13 @@ export default function CastForm({ onLog }) {
       date,
       hn: hn.trim(),
       name: name.trim(),
-      casts: [...castItems],
+      casts: [...castItems].map(([id, count]) => ({ id, count })),
       at: new Date().toISOString(),
     };
     setLog((l) => [entry, ...l]);
     onLog?.(entry);
     resetPhoto();
-    setCastItems(new Set());
+    setCastItems(new Map());
   };
 
   return (
@@ -345,7 +384,7 @@ export default function CastForm({ onLog }) {
               <div className="cf2-field">
                 <div className="cf2-label"><span>HN</span></div>
                 <input className="cf2-input mono" value={hn} inputMode="numeric"
-                       onChange={(e) => setHn(e.target.value.replace(/\D/g, ''))} aria-label="HN" />
+                       onChange={(e) => setHn(sanitizeHn(e.target.value, alertBadHn))} aria-label="HN" />
               </div>
               <div className="cf2-field">
                 <div className="cf2-label"><span>ชื่อ-สกุล</span></div>
@@ -390,7 +429,7 @@ export default function CastForm({ onLog }) {
                   </span>
                 </div>
                 <input className="cf2-input mono" value={hn} inputMode="numeric"
-                       onChange={(e) => setHn(e.target.value.replace(/\D/g, ''))} aria-label="HN" />
+                       onChange={(e) => setHn(sanitizeHn(e.target.value, alertBadHn))} aria-label="HN" />
               </div>
 
               <div className="cf2-field">
@@ -420,16 +459,27 @@ export default function CastForm({ onLog }) {
               // on the 1st, left on the 2nd, right on the 3rd, and so on.
               const iconRight = i % 2 === 0;
               const icon = <span className="cf2-castbtn-icon"><CastIcon id={t.id} /></span>;
+              const count = castItems.get(t.id) ?? 0;
               return (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={`cf2-castbtn ${castItems.has(t.id) ? 'active' : ''}`}
-                  aria-pressed={castItems.has(t.id)}
-                  onClick={() => toggleCastType(t.id)}
-                >
-                  {iconRight ? <>{t.label}{icon}</> : <>{icon}{t.label}</>}
-                </button>
+                <div className="cf2-castrow" key={t.id}>
+                  <button
+                    type="button"
+                    className={`cf2-castbtn ${count > 0 ? 'active' : ''}`}
+                    aria-pressed={count > 0}
+                    onClick={() => toggleCastType(t.id)}
+                  >
+                    {iconRight ? <>{t.label}{icon}</> : <>{icon}{t.label}</>}
+                  </button>
+                  <div className={`cf2-counter ${count > 0 ? '' : 'zero'}`}>
+                    <button type="button" className="cf2-counter-btn" disabled={count === 0}
+                            onClick={() => setCastCount(t.id, count - 1)}
+                            aria-label={`ลดจำนวน ${t.label}`}>−</button>
+                    <span className="cf2-counter-n">{count}</span>
+                    <button type="button" className="cf2-counter-btn"
+                            onClick={() => setCastCount(t.id, count + 1)}
+                            aria-label={`เพิ่มจำนวน ${t.label}`}>+</button>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -437,10 +487,10 @@ export default function CastForm({ onLog }) {
           <div className="cf2-chips">
             {castItems.size === 0
               ? <span className="cf2-empty">ยังไม่ได้เลือกเฝือก — แตะที่รายการด้านบน</span>
-              : [...castItems].map((id) => (
+              : [...castItems].map(([id, count]) => (
                 <span className="cf2-chip" key={id}>
-                  {castLabel(id)}
-                  <button onClick={() => toggleCastType(id)} aria-label={`เอา ${castLabel(id)} ออก`}>×</button>
+                  {castLabel(id)}{count > 1 ? ` ×${count}` : ''}
+                  <button onClick={() => setCastCount(id, 0)} aria-label={`เอา ${castLabel(id)} ออก`}>×</button>
                 </span>
               ))}
           </div>
@@ -457,8 +507,10 @@ export default function CastForm({ onLog }) {
                 </div>
                 <div className="cf2-entry-name">{r.name}</div>
                 <div className="cf2-entry-chips">
-                  {r.casts.map((id) => (
-                    <span className="cf2-entry-chip" key={id}>{castLabel(id)}</span>
+                  {r.casts.map(({ id, count }) => (
+                    <span className="cf2-entry-chip" key={id}>
+                      {castLabel(id)}{count > 1 ? ` ×${count}` : ''}
+                    </span>
                   ))}
                 </div>
               </div>
