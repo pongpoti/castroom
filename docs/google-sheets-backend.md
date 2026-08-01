@@ -1,8 +1,11 @@
 # Saving the shift log to Google Sheets
 
-Design for persisting submitted records. Nothing here is built yet — this is
-the shape of the thing and the reasoning behind each choice, so the decisions
-can be argued with before any of it is written.
+Design for persisting submitted records, and the reasoning behind each choice.
+
+**Status.** Decision 6 — access control — is built: the LIFF gate, the
+allowlist and the enrolment webhook are in the repo. Everything about the
+sheet itself (decisions 1–5) is still a proposal, so those decisions can be
+argued with before any of it is written.
 
 ## Where records live today
 
@@ -155,28 +158,68 @@ outcome this app has, so the write is queued, not fired and forgotten:
 synchronous API removes a class of write-during-unload bugs. Note the trade —
 this stores patient names on the device until the flush succeeds.
 
-## Decision 6 — access control, and the thing to decide first
+## Decision 6 — access control (built: LINE LIFF)
 
-**The deployment is public today.** `castroom-skh.vercel.app` answers to
-anyone, which means anyone who finds the URL can open a patient-data entry
-form, and once `/api/log` exists, write into the hospital's sheet. A shared
-secret compiled into the bundle does not fix this: whatever the browser can
-send, a reader of the bundle can send too. It stops bots, not people.
+The app runs as a **LIFF app inside LINE**, and identity comes from the LINE
+account holding the phone. This is implemented — see `src/LiffGate.jsx`,
+`src/lib/gate.js` and `api/auth.js`.
 
-Proportionate options, cheapest first:
+```mermaid
+sequenceDiagram
+  participant U as User in LINE
+  participant A as App (LiffGate)
+  participant S as api/auth.js
+  participant L as LINE platform
+  U->>A: opens LIFF url
+  A->>A: environmentVerdict — in LINE client? phone/tablet?
+  A->>L: liff.login() if needed
+  L-->>A: ID token (JWT signed by LINE)
+  A->>S: POST /api/auth { idToken }
+  S->>L: verify id_token + client_id
+  L-->>S: { sub: <user id> }
+  S->>S: sub in allowlist?
+  S-->>A: Set-Cookie castroom_session (HMAC, httpOnly, 12h)
+  A->>U: form renders
+```
 
-1. **PIN → signed cookie.** A ward PIN is POSTed to `/api/session`, verified
-   server-side against an env var, and exchanged for an HMAC-signed
-   `httpOnly` cookie with a shift-length expiry. `/api/log` rejects requests
-   without a valid cookie. One shared secret to rotate, no accounts, works on
-   a shared ward tablet. **Recommended.**
-2. **Vercel Password Protection** — a deployment setting, no code, but needs a
-   Pro plan and gates the whole site including the camera step.
-3. **Cloudflare Access / an identity proxy** — per-person accounts and an
-   audit trail. Correct for the long run, heavier than this app currently is.
+Two gates, and only the second one counts:
 
-Add a per-IP rate limit on `/api/log` regardless (e.g. 60 writes/minute), so a
-leaked PIN cannot become a flooded sheet.
+- **Environment** (`environmentVerdict`) — refuses anything that is not the
+  LINE client on iOS or Android. An external browser is refused even when the
+  user is logged into LINE, and LINE's desktop client is refused because it
+  reports its OS as `web`. This runs in a browser the user controls, so it is
+  a courtesy to honest users, not a barrier to dishonest ones.
+- **Allowlist** (`api/auth.js`) — the real control. The browser sends the
+  **ID token**, never a user id: a user id posted by a client is a claim
+  anyone can make, while an ID token is a JWT that LINE's own verify endpoint
+  turns back into a `sub`. Passing `client_id` is what stops a token minted
+  for some other LIFF app being replayed here.
+
+The session is an HMAC-signed `httpOnly` cookie, compared timing-safely, with
+a 12-hour expiry. `/api/log` should require it when it is built — that is the
+last step of phase 3 below.
+
+### Enrolment: LINE OA → Telegram → the list
+
+`api/line-webhook.js`. A new user messages the official account; the webhook
+verifies LINE's `x-line-signature` over the **raw** body, pulls
+`source.userId`, and sends it to the admin's Telegram. The admin pastes the id
+into `config/allowed-line-users.json` and deploys.
+
+Nothing in that path grants access on its own — enrolment stays a deliberate,
+reviewed edit, and the webhook only ever *reports* an id. Group events are
+ignored: being spoken to in a group someone was added to is not the deliberate
+act this is meant to capture. Signature verification matters more than it
+looks, because without it a forged POST could drop an attacker's id into the
+admin's chat looking exactly like a legitimate request to be added.
+
+`LINE_ALLOWED_USER_IDS` in the environment is merged with the file, for
+granting access without a deploy.
+
+### Still to do
+
+Add a per-IP rate limit on `/api/log` when it is built, so a stolen session
+cannot become a flooded sheet.
 
 **On the sheet itself:** share it with named hospital accounts and the service
 account only. Never "anyone with the link". Keep it in a hospital-controlled
@@ -189,12 +232,22 @@ hospital before the first real patient is written.
 ## Environment
 
 ```
+# Sheets (phase 1, not built yet)
 GOOGLE_SERVICE_ACCOUNT_EMAIL   cast-log@<project>.iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY             -----BEGIN PRIVATE KEY-----\n…   (escaped \n)
 SHEETS_SPREADSHEET_ID          from the sheet URL
 SHEETS_RANGE                   cast_log!A:J            (optional, default)
-WARD_PIN                       shared PIN for the session gate
+
+# LIFF access control (built)
+VITE_LIFF_ID                   build-time; the LIFF app id
+LINE_LIFF_CHANNEL_ID           the LIFF channel id, checked as the token audience
 SESSION_SECRET                 HMAC key for the session cookie
+LINE_ALLOWED_USER_IDS          optional, merged with config/allowed-line-users.json
+
+# Enrolment webhook (built)
+LINE_CHANNEL_SECRET            verifies x-line-signature on OA deliveries
+TELEGRAM_BOT_TOKEN             admin notification bot
+TELEGRAM_CHAT_ID               where enrolment ids are sent
 ```
 
 `GOOGLE_PRIVATE_KEY` arrives from Vercel with literal `\n`; the function must
@@ -211,12 +264,13 @@ has, so a misconfigured deploy is inert rather than lossy.
 |---|---|---|
 | 1 | `api/log.js`: JWT mint, token cache, validation, `values.append`. Unit tests for validation and JWT assembly against a stubbed fetch. | Rows land when called directly |
 | 2 | Outbox module + `onLog` wired in `main.jsx`; `pending`/`saved`/`failed` in the entry list. | Submitting writes to the sheet |
-| 3 | `api/session.js`, PIN gate, cookie check in `api/log.js`, rate limit. | Endpoint is no longer open |
+| 3 | Cookie check in `api/log.js` + per-IP rate limit. (LIFF gate, allowlist and enrolment webhook are already in.) | Endpoint is no longer open |
 | 4 | Dedupe view in the sheet, a pivot per cast type, retention note. | The sheet is usable as a report |
 
-Phases 1 and 2 are the working feature; **phase 3 is what makes it safe to put
-real patients through**, and should not trail far behind. Phase 4 is
-spreadsheet work, no code.
+Phases 1 and 2 are the working feature. Phase 3 is small now that the LIFF
+gate exists — `/api/log` just has to require the session cookie `api/auth.js`
+already issues — but **it is what makes the endpoint safe to expose**, so it
+ships with phase 1 rather than after it. Phase 4 is spreadsheet work, no code.
 
 ## What this design does not do
 
