@@ -17,7 +17,7 @@ import { CAST_TYPES, castLabel } from './lib/casts';
  * now curves at the bottom rather than ending in a hard edge.
  */
 const STYLE = `
-@import url('https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
 .cf2{--primary:#073835;--primary-700:#052624;--primary-100:#E9F7ED;
      --pale:#FAFFA3;--pale-100:#FCFFCE;
@@ -26,7 +26,7 @@ const STYLE = `
      --warn:#C2410C;--warn-soft:#FFEDD5;
      --ink:#181B24;--ink-2:#585F6E;
      --surface:#F8FAF3;--card:#FFFFFF;--border:#E3E6ED;--border-strong:#7A9B93;
-     font-family:'Mitr',system-ui,sans-serif;color:var(--ink);
+     font-family:'Noto Sans Thai',system-ui,sans-serif;color:var(--ink);letter-spacing:.015em;
      background:var(--surface);min-height:100vh;padding-bottom:100px}
 .cf2 *{box-sizing:border-box}
 .cf2 :focus-visible{outline:2.5px solid var(--primary);outline-offset:2px}
@@ -37,7 +37,7 @@ const STYLE = `
 .cf2-hero-icon{width:44px;height:44px;flex:none;border-radius:14px;
                background:rgba(255,255,255,.94);display:flex;
                align-items:center;justify-content:center}
-.cf2-title{font-size:20px;font-weight:700;letter-spacing:-.01em;color:#fff}
+.cf2-title{font-size:20px;font-weight:700;letter-spacing:.02em;color:#fff}
 .cf2-sub{font-size:13px;color:#fff;opacity:.88;margin-top:1px}
 
 .cf2-shell{max-width:640px;margin:0 auto;padding:16px;
@@ -86,7 +86,7 @@ const STYLE = `
 .cf2-label{display:flex;justify-content:space-between;align-items:baseline;
            font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
            color:var(--ink-2);margin-bottom:6px}
-.cf2-src{font-weight:600;text-transform:none;letter-spacing:0;color:var(--primary)}
+.cf2-src{font-weight:600;text-transform:none;letter-spacing:inherit;color:var(--primary)}
 .cf2-input{width:100%;border:1.5px solid var(--border-strong);border-radius:12px;background:#fff;
            padding:11px 14px;font-family:inherit;font-size:16px;color:var(--ink)}
 .cf2-input:focus-visible{outline:none;border-color:var(--primary);
