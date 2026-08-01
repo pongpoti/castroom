@@ -1,7 +1,5 @@
 /**
- * db.js — Neon is the source of truth; the Sheets mirror in sheets.js is
- * best-effort. If a submit writes here and the sheet append then fails, the
- * visit is still safe — that ordering is why api/log.js calls this first.
+ * db.js — Neon is the only store for submitted visits.
  *
  * @neondatabase/serverless talks to Neon over HTTP rather than a TCP pool,
  * which is what makes it usable from a Vercel function: a serverless

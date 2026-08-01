@@ -1,20 +1,24 @@
 /**
- * api/line-webhook.js — turn "someone messaged the OA" into an id in Telegram.
+ * api/line-webhook.js — turn "someone messaged the OA" into a decision for
+ * an admin to make, in Telegram.
  *
- * This is the enrolment path. A new user messages the official account, their
- * LINE user id arrives in the admin's Telegram, and the admin pastes it into
- * config/allowed-line-users.json. Nothing here grants access on its own —
- * that stays a deliberate, reviewed edit.
+ * A new user messages the official account; this fetches their display
+ * name and sends the admin a two-line Telegram message — the LINE user id,
+ * then the name — with Accept/Reject buttons underneath.
+ * `api/telegram-webhook.js` is where a tap on either button actually
+ * changes anything; nothing here grants access on its own.
  *
- * The endpoint is public, because LINE has to be able to reach it. What keeps
- * it honest is the signature: every real delivery carries an HMAC of the raw
- * body under the channel secret, so a forged POST cannot inject an id into
- * the admin's chat and social-engineer its way onto the list.
+ * The endpoint is public, because LINE has to be able to reach it. What
+ * keeps it honest is the signature: every real delivery carries an HMAC of
+ * the raw body under the channel secret, so a forged POST cannot inject an
+ * id into the admin's chat and social-engineer its way onto the list.
  */
 
 import crypto from 'node:crypto';
-
-const TELEGRAM_API = 'https://api.telegram.org';
+import { getSql } from '../src/lib/db.js';
+import { isAllowedInDb } from '../src/lib/allowlist.js';
+import { getLineDisplayName } from '../src/lib/line.js';
+import { sendMessage, enrolmentText, buildDecisionKeyboard } from '../src/lib/telegram.js';
 
 /**
  * Vercel parses JSON bodies before the handler sees them, but the signature
@@ -54,25 +58,6 @@ export function userIdsFrom(events) {
   return [...ids];
 }
 
-export function enrolmentMessage(userId) {
-  return [
-    'castroom — LINE user id',
-    '',
-    userId,
-    '',
-    'Add to config/allowed-line-users.json to grant access.',
-  ].join('\n');
-}
-
-async function notifyTelegram(token, chatId, text) {
-  const r = await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
-  });
-  if (!r.ok) throw new Error(`telegram ${r.status}`);
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -80,9 +65,10 @@ export default async function handler(req, res) {
   }
 
   const channelSecret = process.env.LINE_CHANNEL_SECRET;
+  const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   const tgToken = process.env.TELEGRAM_BOT_TOKEN;
   const tgChat = process.env.TELEGRAM_CHAT_ID;
-  if (!channelSecret || !tgToken || !tgChat) {
+  if (!channelSecret || !channelAccessToken || !tgToken || !tgChat || !process.env.DATABASE_URL) {
     return res.status(503).json({ error: 'not-configured' });
   }
 
@@ -110,17 +96,28 @@ export default async function handler(req, res) {
   // LINE retries a delivery it does not get a prompt 200 for, and a retry
   // storm is worse than a missed notification: the id is still recoverable by
   // asking the person to message again. So failures are swallowed after the
-  // signature has been checked, but logged first — a silent catch here was
-  // exactly the gap that made a real Telegram failure indistinguishable from
-  // an empty delivery.
+  // signature has been checked, but logged first.
   try {
+    const sql = getSql();
     const ids = userIdsFrom(events);
+    let notified = 0;
     for (const id of ids) {
-      await notifyTelegram(tgToken, tgChat, enrolmentMessage(id));
+      // Already approved: nothing for an admin to decide, so nothing to ask.
+      // Without this, an already-allowed person messaging again pointlessly
+      // re-prompts the same accept/reject choice every time.
+      if (await isAllowedInDb(sql, id)) continue;
+
+      const displayName = await getLineDisplayName(id, channelAccessToken);
+      await sendMessage(tgToken, {
+        chatId: tgChat,
+        text: enrolmentText(id, displayName),
+        replyMarkup: buildDecisionKeyboard(id),
+      });
+      notified++;
     }
-    if (ids.length > 0) console.log(`line-webhook: notified Telegram for ${ids.length} id(s)`);
+    if (notified > 0) console.log(`line-webhook: notified Telegram for ${notified} id(s)`);
   } catch (e) {
-    console.error('line-webhook: notifyTelegram failed:', e?.message ?? e);
+    console.error('line-webhook: enrolment failed:', e?.message ?? e);
   }
 
   return res.status(200).json({ ok: true });

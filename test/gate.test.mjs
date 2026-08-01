@@ -1,6 +1,6 @@
-import { environmentVerdict, allowedFrom, isLineUserId, isAllowed } from '../src/lib/gate.js';
+import { environmentVerdict, isLineUserId } from '../src/lib/gate.js';
 import { signSession, readSession } from '../api/auth.js';
-import { verifySignature, userIdsFrom, enrolmentMessage } from '../api/line-webhook.js';
+import { verifySignature, userIdsFrom } from '../api/line-webhook.js';
 import crypto from 'node:crypto';
 
 let pass = 0, fail = 0;
@@ -39,29 +39,13 @@ eq('external browser beats desktop',
 eq('LINE desktop blocked', environmentVerdict({ ...inLine, os: 'web' }), 'desktop');
 eq('unknown OS blocked', environmentVerdict({ ...inLine, os: undefined }), 'desktop');
 
-/* ---- allowlist parsing ------------------------------------------------ */
-
-eq('array parsed', [...allowedFrom([ID, OTHER])], [ID, OTHER]);
-eq('comma string parsed', [...allowedFrom(`${ID},${OTHER}`)], [ID, OTHER]);
-eq('newlines and padding tolerated', [...allowedFrom(` ${ID} \n ${OTHER}\n`)], [ID, OTHER]);
-// A hand-edited list should survive a trailing comma rather than fail closed.
-eq('blanks dropped', [...allowedFrom(`${ID},,`)], [ID]);
-eq('comments dropped', [...allowedFrom(`# a note\n${ID}`)], [ID]);
-eq('duplicates collapse', [...allowedFrom([ID, ID])], [ID]);
-eq('nothing parses to empty', [...allowedFrom(undefined)], []);
+/* ---- isLineUserId ------------------------------------------------------- */
 
 eq('well-formed id accepted', isLineUserId(ID), true);
 eq('wrong prefix rejected', isLineUserId('X' + 'a1b2c3d4'.repeat(4)), false);
 eq('too short rejected', isLineUserId('U' + 'a1b2c3d4'.repeat(3)), false);
 eq('uppercase hex rejected', isLineUserId('U' + 'A1B2C3D4'.repeat(4)), false);
 eq('non-string rejected', isLineUserId(null), false);
-
-const list = allowedFrom([ID]);
-eq('listed user allowed', isAllowed(ID, list), true);
-eq('unlisted user refused', isAllowed(OTHER, list), false);
-// A malformed entry must never become a wildcard.
-eq('malformed id refused even if listed', isAllowed('nonsense', allowedFrom(['nonsense'])), false);
-eq('empty list refuses everyone', isAllowed(ID, allowedFrom([])), false);
 
 /* ---- session cookie --------------------------------------------------- */
 
@@ -106,8 +90,6 @@ eq('several senders all reported',
    [ID, OTHER]);
 eq('sourceless events skipped', userIdsFrom([{}, { source: {} }]), []);
 eq('non-array tolerated', userIdsFrom(null), []);
-
-eq('message carries the raw id', enrolmentMessage(ID).includes(ID), true);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

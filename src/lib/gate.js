@@ -11,10 +11,13 @@
  *   1. `environmentVerdict` — is this the right *place* to be running? LIFF
  *      inside the LINE app on a phone or tablet, and nowhere else.
  *   2. the allowlist — is this the right *person*? That one cannot be decided
- *      here at all. It is answered by the server in `api/auth.js`, because a
- *      check the browser performs is a check the browser can be edited to
- *      skip. `allowedFrom` below is the parsing half of it, shared so the
- *      server and its tests agree on what the list means.
+ *      here at all. It is answered by the server in `api/auth.js` against
+ *      the `allowed_line_users` table (see `src/lib/allowlist.js`), because
+ *      a check the browser performs is a check the browser can be edited to
+ *      skip. `isLineUserId` below is the one piece of that shared with the
+ *      client-independent code: the shape a valid id has, so a malformed
+ *      entry is an obvious failure rather than an id that silently never
+ *      matches.
  */
 
 /** LIFF reports the host OS; only a real phone or tablet client counts. */
@@ -48,36 +51,7 @@ export function environmentVerdict({ configured, initFailed, inClient, os }) {
   return 'ok';
 }
 
-/**
- * Parse an allowlist into a Set of LINE user ids.
- *
- * Accepts an array or a comma/newline separated string, so the same function
- * handles both the checked-in JSON file and a comma-separated environment
- * variable. Blanks and `#` comments are dropped, which keeps a hand-edited
- * list from failing closed on a stray trailing comma.
- */
-export function allowedFrom(source) {
-  const raw = Array.isArray(source)
-    ? source
-    : typeof source === 'string' ? source.split(/[,\n]/) : [];
-
-  return new Set(
-    raw
-      .map((v) => (typeof v === 'string' ? v.trim() : ''))
-      .filter((v) => v && !v.startsWith('#')),
-  );
-}
-
-/**
- * LINE user ids are `U` followed by 32 hex characters. Checking the shape
- * before comparing turns a malformed list entry into an obvious failure
- * rather than an id that silently never matches.
- */
+/** LINE user ids are `U` followed by 32 hex characters. */
 export function isLineUserId(value) {
   return typeof value === 'string' && /^U[0-9a-f]{32}$/.test(value);
-}
-
-/** Whether a verified LINE user id may use the app. */
-export function isAllowed(userId, allowed) {
-  return isLineUserId(userId) && allowed.has(userId);
 }

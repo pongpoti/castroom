@@ -13,21 +13,13 @@
  */
 
 import crypto from 'node:crypto';
-import { allowedFrom, isAllowed } from '../src/lib/gate.js';
-import allowlist from '../config/allowed-line-users.json' with { type: 'json' };
+import { getSql } from '../src/lib/db.js';
+import { isAllowedInDb } from '../src/lib/allowlist.js';
 
 const LINE_VERIFY_URL = 'https://api.line.me/oauth2/v2.1/verify';
 
 /** A shift is long; a day is a safe outer bound for one login. */
 export const SESSION_MAX_AGE_S = 12 * 60 * 60;
-
-/** The checked-in list plus anything granted through the environment. */
-export function allowedUsers(env = process.env) {
-  return allowedFrom([
-    ...allowedFrom(allowlist.allow),
-    ...allowedFrom(env.LINE_ALLOWED_USER_IDS ?? ''),
-  ]);
-}
 
 /** `<payload>.<hmac>`, base64url, so the cookie cannot be edited client-side. */
 export function signSession(payload, secret) {
@@ -70,7 +62,7 @@ export default async function handler(req, res) {
 
   const channelId = process.env.LINE_LIFF_CHANNEL_ID;
   const secret = process.env.SESSION_SECRET;
-  if (!channelId || !secret) {
+  if (!channelId || !secret || !process.env.DATABASE_URL) {
     // Same shape as api/ocr.js: an unconfigured deployment is inert, not buggy.
     return res.status(503).json({ error: 'not-configured' });
   }
@@ -98,7 +90,13 @@ export default async function handler(req, res) {
     return res.status(502).json({ error: 'verify-failed', detail: String(e?.message ?? e) });
   }
 
-  if (!isAllowed(sub, allowedUsers())) {
+  let allowed;
+  try {
+    allowed = await isAllowedInDb(getSql(), sub);
+  } catch (e) {
+    return res.status(502).json({ error: 'allowlist-check-failed', detail: String(e?.message ?? e) });
+  }
+  if (!allowed) {
     // 403, not 401: the login worked, this person is simply not on the list.
     // The response deliberately does not say whether the list is empty or
     // long — that is not something an unauthorised caller needs to learn.

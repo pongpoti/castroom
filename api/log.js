@@ -1,32 +1,37 @@
 /**
  * api/log.js — the write path for a submitted visit.
  *
- * Neon is the source of truth; the Google Sheet is a best-effort mirror for
- * staff who want to open a spreadsheet rather than a database console. A
- * visit is only ever lost from Neon, never silently dropped because the
- * sheet append failed — Neon is written first, and a mirror failure is
- * logged and reported in the response but does not fail the request.
+ * Neon is the only store: an earlier version also mirrored every write to a
+ * Google Sheet, which added a second failure mode (a mirror could silently
+ * fall behind) for a benefit nobody ended up needing — the Sheet was always
+ * meant for staff who wanted to browse records without a database client,
+ * and that need didn't materialise, so the mirror is gone rather than kept
+ * half-used. Neon plus a read UI, if one gets built, covers the same need
+ * without a second system that can disagree with the first.
  *
  * Requires the session cookie api/auth.js issues. A user id posted by the
- * client would be a claim anyone could make; the cookie is signed server
- * -side and was only ever handed to a caller who passed the LIFF allowlist
- * check, so it is what actually gates this endpoint rather than being a
- * courtesy the way the LIFF environment check is.
+ * client would be a claim anyone could make; the cookie is signed
+ * server-side and was only ever handed to a caller who passed the LIFF
+ * allowlist check, so it is what actually gates this endpoint rather than
+ * being a courtesy the way the LIFF environment check is.
+ *
+ * Rate limited per IP before any of that runs — see src/lib/ratelimit.js
+ * for why the counter lives in Neon rather than in this function's memory.
  */
 
 import { readSession } from './auth.js';
 import { validateLogPayload } from '../src/lib/validate.js';
 import { getSql, insertCastLog } from '../src/lib/db.js';
-import { mintAccessToken, appendToSheet, toSheetRows } from '../src/lib/sheets.js';
+import { checkRateLimit, clientIp } from '../src/lib/ratelimit.js';
 
 const APP_VERSION = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'dev';
 
-// Warm invocations reuse this; a cold start pays for one token mint. Module
-// scope survives between requests on the same warm instance, not across
-// deploys or scale-to-zero — that's fine, the alternative is minting a
-// token on every request, which the 5-minute headroom below already avoids
-// for the common case.
-let cachedToken = null; // { accessToken, exp } | null
+// A stolen session and an outright script kiddie both look the same at this
+// layer: more requests than any real operator submits. 60/minute is far
+// above the rate a person tapping through this form could reach, and far
+// below what turns a leaked session into a flooded database.
+const RATE_LIMIT = 60;
+const RATE_WINDOW_MS = 60_000;
 
 function readCookie(req, name) {
   const header = req.headers.cookie;
@@ -39,33 +44,6 @@ function readCookie(req, name) {
   return null;
 }
 
-async function getSheetsToken(email, key) {
-  const now = Date.now();
-  if (cachedToken && cachedToken.exp * 1000 - now > 5 * 60 * 1000) {
-    return cachedToken.accessToken;
-  }
-  cachedToken = await mintAccessToken(email, key, now);
-  return cachedToken.accessToken;
-}
-
-/** Best-effort: caller catches, a failure here must not fail the request. */
-async function mirrorToSheet(entry, loggedAtISO) {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_PRIVATE_KEY;
-  const spreadsheetId = process.env.SHEETS_SPREADSHEET_ID;
-  const range = process.env.SHEETS_RANGE || 'cast_log!A:J';
-  if (!email || !key || !spreadsheetId) return 'skipped';
-
-  const accessToken = await getSheetsToken(email, key);
-  await appendToSheet({
-    accessToken,
-    spreadsheetId,
-    range,
-    rows: toSheetRows(entry, loggedAtISO, APP_VERSION),
-  });
-  return 'ok';
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -75,6 +53,25 @@ export default async function handler(req, res) {
   const secret = process.env.SESSION_SECRET;
   if (!process.env.DATABASE_URL || !secret) {
     return res.status(503).json({ error: 'not-configured' });
+  }
+
+  const sql = getSql();
+
+  // A rate-limit check that can't reach Neon means Neon is down, which the
+  // insert below would fail on anyway — surfaced the same way (502) rather
+  // than as an uncaught exception.
+  let limit;
+  try {
+    limit = await checkRateLimit(sql, `log:${clientIp(req)}`, {
+      limit: RATE_LIMIT,
+      windowMs: RATE_WINDOW_MS,
+    });
+  } catch (e) {
+    return res.status(502).json({ error: 'db-write-failed', detail: String(e?.message ?? e) });
+  }
+  if (!limit.allowed) {
+    res.setHeader('Retry-After', String(Math.ceil(RATE_WINDOW_MS / 1000)));
+    return res.status(429).json({ error: 'rate-limited' });
   }
 
   const token = readCookie(req, 'castroom_session');
@@ -92,19 +89,10 @@ export default async function handler(req, res) {
 
   let insertedIds;
   try {
-    const sql = getSql();
     insertedIds = await insertCastLog(sql, entry, loggedAtISO, APP_VERSION);
   } catch (e) {
     return res.status(502).json({ error: 'db-write-failed', detail: String(e?.message ?? e) });
   }
 
-  let sheet = 'skipped';
-  try {
-    sheet = await mirrorToSheet(entry, loggedAtISO);
-  } catch (e) {
-    sheet = 'failed';
-    console.error('api/log: sheet mirror failed:', e?.message ?? e);
-  }
-
-  return res.status(200).json({ ok: true, rows: insertedIds.length, sheet });
+  return res.status(200).json({ ok: true, rows: insertedIds.length });
 }
