@@ -89,6 +89,18 @@ export default function CameraFrame({ onCapture, onCancel, onFallback }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Some in-app browsers (LINE's LIFF webview on iOS has shipped versions
+      // that do this) don't expose getUserMedia at all rather than rejecting
+      // it — calling straight through would throw a bare TypeError with no
+      // useful name to branch on. Checking first gives a specific, actionable
+      // message instead of the generic catch-all below.
+      if (!navigator.mediaDevices?.getUserMedia) {
+        if (!cancelled) {
+          console.error('camera: getUserMedia unavailable in this webview');
+          setError('เบราว์เซอร์นี้ไม่รองรับกล้องแบบสด — กด "เลือกไฟล์" เพื่อถ่ายภาพด้วยกล้องเครื่องแทน');
+        }
+        return;
+      }
       try {
         // Ask for as much sensor as the device will give: the name line is
         // only about a fifth of a QR width tall, so preview resolution is the
@@ -108,9 +120,13 @@ export default function CameraFrame({ onCapture, onCancel, onFallback }) {
           await videoRef.current.play().catch(() => {});
         }
       } catch (e) {
+        // Logged with its real name/message — the UI only ever showed a
+        // generic Thai sentence, which made "camera doesn't work" reports
+        // undiagnosable without this line in the console.
+        console.error('camera: getUserMedia failed:', e?.name, e?.message);
         if (!cancelled) setError(e?.name === 'NotAllowedError'
-          ? 'ไม่ได้รับอนุญาตให้ใช้กล้อง — เปิดสิทธิ์กล้องในเบราว์เซอร์ หรือเลือกไฟล์แทน'
-          : 'เปิดกล้องไม่สำเร็จ — เลือกไฟล์แทนได้');
+          ? 'ไม่ได้รับอนุญาตให้ใช้กล้อง — เปิดสิทธิ์กล้องในเบราว์เซอร์ หรือกด "เลือกไฟล์" เพื่อถ่ายภาพด้วยกล้องเครื่องแทน'
+          : 'เปิดกล้องไม่สำเร็จ — กด "เลือกไฟล์" เพื่อถ่ายภาพด้วยกล้องเครื่องแทน');
       }
     })();
     return () => {
