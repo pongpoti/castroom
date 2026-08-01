@@ -4,7 +4,7 @@ import { readName } from './lib/ocr';
 import CameraFrame from './CameraFrame';
 import CastIcon from './CastIcons';
 import { CAST_TYPES, castLabel } from './lib/casts';
-import BrandIcon from './BrandIcon';
+import BrandMark from './BrandMark';
 
 /*
  * Palette taken from a four-swatch reference: a pale yellow, a yellow-green,
@@ -44,9 +44,6 @@ const STYLE = `
           border-radius:0 0 28px 28px;
           padding:22px 20px 26px;display:flex;align-items:center;gap:14px;
           box-shadow:0 4px 16px rgba(6,84,58,.22)}
-.cf2-hero-icon{width:44px;height:44px;flex:none;border-radius:14px;
-               background:rgba(255,255,255,.94);display:flex;
-               align-items:center;justify-content:center}
 .cf2-title{font-size:24px;font-weight:700;letter-spacing:.02em;color:#fff}
 /* Full white, not the .88 it used to carry: against the brighter end of the
    new gradient that fade dropped the subtitle to 3.95:1, under the 4.5:1 it
@@ -376,9 +373,7 @@ export default function CastForm({ onLog }) {
       )}
 
       <header className="cf2-hero">
-        <div className="cf2-hero-icon">
-          <BrandIcon size={24} color="#073835" />
-        </div>
+        <BrandMark size={44} />
         <div>
           <div className="cf2-title">เวรห้องเฝือก</div>
           <div className="cf2-sub">บันทึกผู้ป่วยใส่เฝือกประจำเวร</div>

@@ -170,13 +170,15 @@ Expected: a brief "กำลังตรวจสอบสิทธิ์…", t
 
 ## When it does not work
 
-Every block screen prints its verdict in small type at the bottom. That word
-tells you which step to revisit.
+Every block screen but one prints its verdict in small type at the bottom —
+`external-browser` shows just the "เปิดใน LINE OA เวรห้องเฝือก" message, since
+that screen's own text already says what to do. The word on the others tells
+you which step below to revisit.
 
 | Verdict on screen | Meaning | Fix |
 |---|---|---|
 | `not-configured` | No `VITE_LIFF_ID` in the build | Set it, then **redeploy** — it is build-time |
-| `external-browser` | Not opened through LINE | Use the `liff.line.me` link, not the vercel.app one |
+| (shown as "เปิดใน LINE OA เวรห้องเฝือก", no code) | Not opened through LINE | Use the `liff.line.me` link, not the vercel.app one |
 | `desktop` | LINE's desktop client | Use a phone or tablet |
 | `init-failed` | `liff.init()` threw | LIFF ID wrong, or the LIFF **Endpoint URL** does not match the deployment |
 | `not-allowed` | Login worked, id not on the list | Step 5. Check the two channels share a provider |

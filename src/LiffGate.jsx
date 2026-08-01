@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { environmentVerdict } from './lib/gate';
-import BrandIcon from './BrandIcon';
+import BrandMark from './BrandMark';
 
 /**
  * LiffGate — nothing renders until this says who is holding the phone.
@@ -20,8 +20,6 @@ const STYLE = `
     justify-content:center;gap:16px;padding:36px 28px;text-align:center;
     font-family:'Noto Sans Thai',system-ui,sans-serif;letter-spacing:.015em;
     background:linear-gradient(135deg,#06543A 0%,#0E7A3F 55%,#12873C 100%);color:#fff}
-.lg-icon{width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,.94);
-         display:flex;align-items:center;justify-content:center;flex:none}
 .lg-t{font-size:21px;font-weight:700}
 .lg-m{font-size:15.5px;line-height:1.75;max-width:34ch}
 .lg-hint{font-size:13.5px;line-height:1.7;max-width:34ch;opacity:.85}
@@ -43,7 +41,7 @@ const BLOCKED = {
   },
   'external-browser': {
     title: 'เปิดผ่าน LINE เท่านั้น',
-    message: 'กรุณาเปิดแอปนี้จากแชท LINE ของห้องเฝือก ไม่สามารถใช้ผ่านเบราว์เซอร์ทั่วไปได้',
+    message: 'กรุณาเปิดใน LINE OA เวรห้องเฝือก',
   },
   desktop: {
     title: 'ใช้บนมือถือหรือแท็บเล็ตเท่านั้น',
@@ -62,16 +60,19 @@ const BLOCKED = {
 function Screen({ verdict, onRetry }) {
   const { title, message } = BLOCKED[verdict] ?? BLOCKED['auth-failed'];
   const retryable = verdict === 'auth-failed' || verdict === 'init-failed';
+  // The raw verdict string is diagnostic — useful when troubleshooting a
+  // stuck deploy (see docs/setup.md), not something an operator holding a
+  // phone outside the LINE app needs to see alongside a message that already
+  // says what to do.
+  const showCode = verdict !== 'external-browser';
   return (
     <div className="lg">
       <style>{STYLE}</style>
-      <div className="lg-icon">
-        <BrandIcon size={34} color="#06543A" />
-      </div>
+      <BrandMark size={64} />
       <div className="lg-t">{title}</div>
       <div className="lg-m">{message}</div>
       {retryable && <button className="lg-btn" onClick={onRetry}>ลองใหม่</button>}
-      <div className="lg-code">{verdict}</div>
+      {showCode && <div className="lg-code">{verdict}</div>}
     </div>
   );
 }
