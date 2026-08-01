@@ -159,7 +159,9 @@ local work, `npm run dev` with `VITE_LIFF_DEV_BYPASS=1` skips the gate;
 channels, a Telegram bot, the environment variables, and how to get the first
 person onto the allowlist.
 
-See `docs/google-sheets-backend.md` for how records will be persisted.
+See `docs/backend.md` for how submitted records are persisted: Neon
+(Postgres) as the source of truth, a Google Sheet as a best-effort mirror
+for staff who want to open a spreadsheet.
 
 The local model is no longer fetched on mount — it is tens of megabytes and
 most captures never need it. Move recognition into a Web Worker before

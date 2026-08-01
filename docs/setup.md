@@ -166,6 +166,85 @@ design.
 
 Expected: a brief "กำลังตรวจสอบสิทธิ์…", then the form.
 
+Getting this far means people can open the form and select cast types.
+Submitting still only holds records in memory for the current tab until the
+next section is done — see `docs/backend.md` for the full design.
+
+---
+
+## 7. Neon (required for submissions to actually save)
+
+Without this, `/api/log` answers `503` and every submit sits in the
+browser's outbox forever — visible in the UI, never lost, but never saved
+either. Five minutes:
+
+1. **Provision the database.** Either path lands on the same connection
+   string:
+   - From Vercel: your project → **Storage** tab → **Create Database** →
+     **Neon (Postgres)**. Vercel sets `DATABASE_URL` in your project's
+     environment variables for you.
+   - Directly at [neon.tech](https://neon.tech): create a project, then
+     **Connection Details** → copy the connection string (starts
+     `postgresql://`) → add it as `DATABASE_URL` in Vercel yourself.
+2. **Run the schema once.** Open the Neon console's **SQL Editor** (or `psql
+   "$DATABASE_URL"` from a terminal that has the connection string) and run
+   everything in `api/db/schema.sql`. This creates `cast_log` and the
+   `cast_log_deduped` view — `api/log.js` does not create its own table.
+3. **Redeploy.** `DATABASE_URL` is read at request time, not build time, so
+   a redeploy isn't strictly required the way `VITE_LIFF_ID` is — but
+   Vercel's own "Create Database" flow triggers one automatically, and it's
+   the easy way to confirm the function picks the variable up.
+
+Test it: submit a visit from the form, then in the Neon SQL Editor run
+`select * from cast_log order by id desc limit 5;` — the row should be
+there within a second or two of the submit button going from "กำลังส่งข้อมูล
+1 รายการ" back to nothing.
+
+## 8. The Google Sheets mirror (optional)
+
+Skip this section entirely and the app keeps working — Neon is the only
+required store; a missing Sheets configuration makes `/api/log` skip the
+mirror (`sheet:"skipped"`), not fail. Do this only if staff want to open a
+spreadsheet instead of the Neon console.
+
+1. **Google Cloud project + service account.** In the
+   [Google Cloud console](https://console.cloud.google.com/): create (or
+   reuse) a project → **APIs & Services** → enable the **Google Sheets
+   API** → **Credentials** → **Create Credentials** → **Service account**.
+   Give it any name; no roles are needed.
+2. **Key.** Open the new service account → **Keys** → **Add Key** → **Create
+   new key** → **JSON**. This downloads a file containing an `email` field
+   and a `private_key` field — those become `GOOGLE_SERVICE_ACCOUNT_EMAIL`
+   and `GOOGLE_PRIVATE_KEY`.
+3. **The sheet.** Create a Google Sheet, add a header row matching
+   `api/db/schema.sql`'s columns (`logged_at, visit_id, shift_date, hn,
+   patient_name, cast_type, cast_label, count, source, app_version`), then
+   **Share** it with the service account's `email` (from the JSON file) as
+   an **Editor** — the service account has no access otherwise, since it
+   isn't a real Google user with an inbox to accept an invite.
+4. Format the `hn` column (or the whole sheet) as **plain text** before the
+   first write, or Sheets will coerce a numeric-looking HN and a leading
+   zero silently disappears.
+5. **Spreadsheet ID.** From the sheet's URL —
+   `https://docs.google.com/spreadsheets/d/`**`<this part>`**`/edit` —
+   set as `SHEETS_SPREADSHEET_ID`.
+6. Set `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, and
+   `SHEETS_SPREADSHEET_ID` in Vercel, then redeploy.
+
+**Pasting the private key:** paste the `private_key` field's value exactly
+as the JSON file has it, literal `\n` sequences and all — do not manually
+convert them to real newlines. `src/lib/sheets.js` does that conversion at
+request time; a key that already has real newlines pasted into a single-line
+Vercel env var field usually gets mangled by the paste itself, which is the
+opaque-signature failure `docs/backend.md`'s environment section warns
+about.
+
+Test it: submit a visit, then check the sheet for a new row. If Neon got
+the row but the sheet didn't, check the Vercel function logs for
+`api/log: sheet mirror failed:` — the response to the browser is still
+`200` on a mirror failure (see `docs/backend.md` Decision 3), so the UI
+alone won't tell you.
+
 ---
 
 ## When it does not work
