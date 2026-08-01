@@ -4,6 +4,7 @@ import { readName } from './lib/ocr';
 import CameraFrame from './CameraFrame';
 import CastIcon from './CastIcons';
 import { CAST_TYPES, castLabel } from './lib/casts';
+import BrandIcon from './BrandIcon';
 
 /*
  * Palette taken from a four-swatch reference: a pale yellow, a yellow-green,
@@ -376,10 +377,7 @@ export default function CastForm({ onLog }) {
 
       <header className="cf2-hero">
         <div className="cf2-hero-icon">
-          <svg width="24" height="24" viewBox="0 0 64 64" fill="none">
-            <rect x="10" y="24" width="44" height="20" rx="10" fill="#fff" stroke="#073835" strokeWidth="3.5" />
-            <path d="M18 24v20M28 24v20M38 24v20M48 24v20" stroke="#073835" strokeWidth="3.5" strokeLinecap="round" />
-          </svg>
+          <BrandIcon size={24} color="#073835" />
         </div>
         <div>
           <div className="cf2-title">เวรห้องเฝือก</div>

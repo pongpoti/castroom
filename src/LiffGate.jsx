@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { environmentVerdict } from './lib/gate';
+import BrandIcon from './BrandIcon';
 
 /**
  * LiffGate — nothing renders until this says who is holding the phone.
@@ -65,10 +66,7 @@ function Screen({ verdict, onRetry }) {
     <div className="lg">
       <style>{STYLE}</style>
       <div className="lg-icon">
-        <svg width="34" height="34" viewBox="0 0 64 64" fill="none">
-          <rect x="10" y="24" width="44" height="20" rx="10" fill="#fff" stroke="#06543A" strokeWidth="3.5" />
-          <path d="M18 24v20M28 24v20M38 24v20M48 24v20" stroke="#06543A" strokeWidth="3.5" strokeLinecap="round" />
-        </svg>
+        <BrandIcon size={34} color="#06543A" />
       </div>
       <div className="lg-t">{title}</div>
       <div className="lg-m">{message}</div>
