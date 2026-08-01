@@ -5,7 +5,7 @@ import { MIN_UNIT_PX } from './lib/anchors';
 
 const STYLE = `
 .cf{position:fixed;inset:0;z-index:50;background:#000;display:flex;
-    flex-direction:column;font-family:'Mitr',system-ui,sans-serif}
+    flex-direction:column;font-family:'Noto Sans Thai',system-ui,sans-serif;letter-spacing:.015em}
 .cf-stage{position:relative;flex:1;overflow:hidden;background:#000}
 .cf-stage video{width:100%;height:100%;object-fit:cover;display:block}
 
