@@ -20,8 +20,8 @@ const STYLE = `
     justify-content:center;gap:16px;padding:36px 28px;text-align:center;
     font-family:'Noto Sans Thai',system-ui,sans-serif;letter-spacing:.015em;
     background:linear-gradient(135deg,#06543A 0%,#0E7A3F 55%,#12873C 100%);color:#fff}
-.lg-t{font-size:21px;font-weight:700}
-.lg-m{font-size:15.5px;line-height:1.75;max-width:34ch}
+.lg-t{font-size:34px;font-weight:700;line-height:1.25}
+.lg-m{font-size:20px;line-height:1.6;max-width:34ch}
 .lg-hint{font-size:13.5px;line-height:1.7;max-width:34ch;opacity:.85}
 .lg-code{font-family:'IBM Plex Mono',monospace;font-size:12.5px;opacity:.7;margin-top:4px}
 .lg-btn{margin-top:6px;background:#fff;color:#06543A;border:none;border-radius:12px;
