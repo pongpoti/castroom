@@ -155,6 +155,10 @@ form — it fails closed, so a misconfigured deploy is never an open one. For
 local work, `npm run dev` with `VITE_LIFF_DEV_BYPASS=1` skips the gate;
 `vite build` compiles that branch out, so it cannot exist in a deployed bundle.
 
+**[docs/setup.md](docs/setup.md) is the step-by-step guide** — two LINE
+channels, a Telegram bot, the environment variables, and how to get the first
+person onto the allowlist.
+
 See `docs/google-sheets-backend.md` for how records will be persisted.
 
 The local model is no longer fetched on mount — it is tens of megabytes and
