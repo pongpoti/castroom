@@ -98,15 +98,30 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'bad-body' });
   }
 
+  // A delivery LINE itself sends is not necessarily a message: the console's
+  // own "Verify" button posts { events: [] } to test connectivity, and a
+  // follow/unfollow carries events that userIdsFrom deliberately excludes.
+  // Logging the shape — never the message text — is what makes "nothing
+  // arrived in Telegram" diagnosable from Vercel's logs instead of guessed at.
+  const summary = (Array.isArray(events) ? events : [])
+    .map((e) => `${e?.type ?? '?'}/${e?.source?.type ?? '?'}`);
+  console.log(`line-webhook: ${summary.length} event(s) [${summary.join(', ')}]`);
+
   // LINE retries a delivery it does not get a prompt 200 for, and a retry
   // storm is worse than a missed notification: the id is still recoverable by
   // asking the person to message again. So failures are swallowed after the
-  // signature has been checked.
+  // signature has been checked, but logged first — a silent catch here was
+  // exactly the gap that made a real Telegram failure indistinguishable from
+  // an empty delivery.
   try {
-    for (const id of userIdsFrom(events)) {
+    const ids = userIdsFrom(events);
+    for (const id of ids) {
       await notifyTelegram(tgToken, tgChat, enrolmentMessage(id));
     }
-  } catch { /* reported as 200 below; see above */ }
+    if (ids.length > 0) console.log(`line-webhook: notified Telegram for ${ids.length} id(s)`);
+  } catch (e) {
+    console.error('line-webhook: notifyTelegram failed:', e?.message ?? e);
+  }
 
   return res.status(200).json({ ok: true });
 }
