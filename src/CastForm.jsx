@@ -419,6 +419,7 @@ export default function CastForm({ onLog }) {
                 <div className="cf2-label"><span>ชื่อ-สกุล</span></div>
                 <input className="cf2-input" value={name}
                        onChange={(e) => setName(e.target.value)} aria-label="ชื่อ-สกุล" />
+                <div className="cf2-fielderr soft">อย่าลืมใส่คำนำหน้านะ</div>
               </div>
               <button className="cf2-linkbtn"
                       onClick={() => { setManual(false); setHn(''); setName(''); setHnError(null); }}>
@@ -476,6 +477,7 @@ export default function CastForm({ onLog }) {
                 {capture.evidence && <div className="cf2-evidence" ref={evidenceRef} />}
                 <input className="cf2-input" value={name}
                        onChange={(e) => setName(e.target.value)} aria-label="ชื่อ-สกุล" />
+                <div className="cf2-fielderr soft">อย่าลืมใส่คำนำหน้านะ</div>
               </div>
 
               <button className="cf2-retake" onClick={resetPhoto}>ถ่ายใหม่</button>
