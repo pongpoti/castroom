@@ -112,11 +112,11 @@ const STYLE = `
    it cuts across each cast read as gaps on both the unselected and the
    selected badge without the icon tracking state itself. */
 .cf2-castbtn{--icon-bg:var(--surface);
-            width:fit-content;min-width:216px;border:1.5px solid var(--border-strong);
+            width:fit-content;border:1.5px solid var(--border-strong);
             background:var(--surface);color:var(--ink);
             border-radius:999px;padding:10px 20px;cursor:pointer;font-family:inherit;
             font-size:16px;font-weight:500;text-align:center;
-            display:inline-flex;align-items:center;justify-content:space-between;gap:14px}
+            display:inline-flex;align-items:center;justify-content:center;gap:14px}
 .cf2-castbtn:hover{border-color:var(--primary);color:var(--primary-700)}
 .cf2-castbtn.active{--icon-bg:var(--primary);
                     border-color:var(--primary);background:var(--primary);color:#fff;
