@@ -52,12 +52,20 @@ function Cast({ d, w = 9 }) {
 
 /* ---- the three silhouettes ------------------------------------------- */
 
-/** Hip, knee, shin, ankle, foot. Toes stay clear of every leg cast. */
-function LegGhost() {
+/**
+ * Hip, knee, shin, ankle, foot. Toes stay clear of every leg cast.
+ *
+ * `straight` draws the leg in full extension — no angle at all through the
+ * knee — which is the position a knee slab holds the leg in, and the only
+ * way that icon can show what the slab is actually for.
+ */
+function LegGhost({ straight = false }) {
   return (
     <Ghost>
-      <path d="M15 4 L15 19 L13 30.5 L22.5 32.5" stroke="currentColor"
-        strokeWidth={LIMB_W} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path
+        d={straight ? 'M15 4 L15 30.5 L23.5 32.5' : 'M15 4 L15 19 L13 30.5 L22.5 32.5'}
+        stroke="currentColor" strokeWidth={LIMB_W}
+        strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </Ghost>
   );
 }
@@ -98,19 +106,22 @@ const ICONS = {
   shortLeg: () => (
     <Svg><LegGhost /><Cast d="M14.5 22 L13 30.5 L20.5 32.1" /></Svg>
   ),
+  // Held in full extension, with the slab spanning the knee and nothing else.
   kneeSlab: () => (
-    <Svg><LegGhost /><Cast d="M15 12.5 L15 19 L14.15 24" /></Svg>
+    <Svg><LegGhost straight /><Cast d="M15 15.5 L15 22.5" w={9.5} /></Svg>
   ),
 
-  // Arm: over the elbow, forearm only, and the U wrapping the elbow itself.
+  // Arm: shoulder to wrist, forearm only, and the U over shoulder and elbow.
   longArm: () => (
     <Svg><ArmGhost /><Cast d="M10.8 7 L10 22 L24 27.6" /></Svg>
   ),
   shortArm: () => (
     <Svg><ArmGhost /><Cast d="M16 24.4 L24 27.6" /></Svg>
   ),
+  // Shoulder down around the elbow and no further — what separates it from
+  // the long arm slab is that it stops there instead of taking the forearm.
   uSlab: () => (
-    <Svg><ArmGhost /><Cast d="M11 14 L10 22 L17 24.8" /></Svg>
+    <Svg><ArmGhost /><Cast d="M11 5.5 L10 22 L12.8 23.1" /></Svg>
   ),
 
   // Hand: thumb side, little-finger side, taped pair, single finger.
