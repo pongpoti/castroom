@@ -42,8 +42,8 @@ const STYLE = `
 .cf2-hero-icon{width:44px;height:44px;flex:none;border-radius:14px;
                background:rgba(255,255,255,.94);display:flex;
                align-items:center;justify-content:center}
-.cf2-title{font-size:20px;font-weight:700;letter-spacing:.02em;color:#fff}
-.cf2-sub{font-size:13px;color:#fff;opacity:.88;margin-top:1px}
+.cf2-title{font-size:24px;font-weight:700;letter-spacing:.02em;color:#fff}
+.cf2-sub{font-size:15px;color:#fff;opacity:.88;margin-top:3px}
 
 .cf2-shell{max-width:640px;margin:0 auto;padding:16px;
            display:flex;flex-direction:column;gap:14px}
@@ -78,10 +78,10 @@ const STYLE = `
           gap:8px;min-height:140px;border:1.5px dashed var(--border-strong);border-radius:14px;
           background:var(--surface);text-align:center;padding:24px;cursor:pointer}
 .cf2-drop:hover,.cf2-drop:focus-visible{border-color:var(--primary);outline:none}
-.cf2-drop b{font-size:15px;font-weight:600;color:var(--ink)}
-.cf2-drop span{font-size:12.5px;color:var(--ink-2);max-width:36ch;line-height:1.6}
+.cf2-drop b{font-size:18px;font-weight:600;color:var(--ink)}
+.cf2-drop span{font-size:15px;color:var(--ink-2);max-width:36ch;line-height:1.6}
 .cf2-linkbtn{display:block;margin:12px auto 0;background:none;border:none;
-             font-family:inherit;font-size:13px;color:var(--primary);
+             font-family:inherit;font-size:14px;color:var(--primary);
              text-decoration:underline;cursor:pointer;padding:6px}
 
 .cf2-evidence{border-radius:12px;overflow:hidden;background:#fff;
@@ -185,6 +185,11 @@ export default function CastForm({ onLog }) {
   const [name, setName] = useState('');
   const [camera, setCamera] = useState(false);
 
+  // Typing the patient in by hand, for when there is no slip to photograph
+  // or the QR simply will not read. Same two fields the photo path fills in,
+  // so a hand-entered record carries exactly what a scanned one does.
+  const [manual, setManual] = useState(false);
+
   const [castItems, setCastItems] = useState(new Set());
   const [log, setLog] = useState([]);
 
@@ -255,6 +260,7 @@ export default function CastForm({ onLog }) {
 
   const resetPhoto = () => {
     setCapture(null); setHn(''); setName(''); setPhotoError(null); setPhotoStage('idle');
+    setManual(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -329,7 +335,29 @@ export default function CastForm({ onLog }) {
             <span className="cf2-step-t">ถ่ายรูปใบรับยา</span>
           </div>
 
-          {!capture ? (
+          {/* Mounted whatever the step is showing: the camera screen's own
+              "เลือกไฟล์" fallback reaches this input through the same ref. */}
+          <input ref={fileRef} type="file" accept="image/*" hidden
+                 onChange={(e) => handleFile(e.target.files?.[0])} />
+
+          {!capture && manual ? (
+            <>
+              <div className="cf2-field">
+                <div className="cf2-label"><span>HN</span></div>
+                <input className="cf2-input mono" value={hn} inputMode="numeric"
+                       onChange={(e) => setHn(e.target.value.replace(/\D/g, ''))} aria-label="HN" />
+              </div>
+              <div className="cf2-field">
+                <div className="cf2-label"><span>ชื่อ-สกุล</span></div>
+                <input className="cf2-input" value={name}
+                       onChange={(e) => setName(e.target.value)} aria-label="ชื่อ-สกุล" />
+              </div>
+              <button className="cf2-linkbtn"
+                      onClick={() => { setManual(false); setHn(''); setName(''); }}>
+                หรือถ่ายภาพ
+              </button>
+            </>
+          ) : !capture ? (
             <>
               <div
                 className="cf2-drop"
@@ -341,11 +369,9 @@ export default function CastForm({ onLog }) {
                 <b>{photoBusy ? photoStatus : 'แตะเพื่อถ่ายภาพ'}</b>
                 <span>ถ่ายให้เห็นกรอบสีดำ</span>
               </div>
-              <button className="cf2-linkbtn" onClick={() => !photoBusy && fileRef.current?.click()}>
-                หรือเลือกไฟล์ภาพที่ถ่ายไว้แล้ว
+              <button className="cf2-linkbtn" onClick={() => !photoBusy && setManual(true)}>
+                หรือกรอกชื่อ
               </button>
-              <input ref={fileRef} type="file" accept="image/*" hidden
-                     onChange={(e) => handleFile(e.target.files?.[0])} />
               {photoError && <div className="cf2-err">{photoError}</div>}
             </>
           ) : (
