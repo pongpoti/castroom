@@ -97,7 +97,7 @@ export default function CameraFrame({ onCapture, onCancel, onFallback }) {
       if (!navigator.mediaDevices?.getUserMedia) {
         if (!cancelled) {
           console.error('camera: getUserMedia unavailable in this webview');
-          setError('เบราว์เซอร์นี้ไม่รองรับกล้องแบบสด — กด "เลือกไฟล์" เพื่อถ่ายภาพด้วยกล้องเครื่องแทน');
+          setError('เบราว์เซอร์นี้ไม่รองรับกล้องแบบสด — กด "เลือกไฟล์" เพื่อเลือกภาพแทน');
         }
         return;
       }
@@ -125,8 +125,8 @@ export default function CameraFrame({ onCapture, onCancel, onFallback }) {
         // undiagnosable without this line in the console.
         console.error('camera: getUserMedia failed:', e?.name, e?.message);
         if (!cancelled) setError(e?.name === 'NotAllowedError'
-          ? 'ไม่ได้รับอนุญาตให้ใช้กล้อง — เปิดสิทธิ์กล้องในเบราว์เซอร์ หรือกด "เลือกไฟล์" เพื่อถ่ายภาพด้วยกล้องเครื่องแทน'
-          : 'เปิดกล้องไม่สำเร็จ — กด "เลือกไฟล์" เพื่อถ่ายภาพด้วยกล้องเครื่องแทน');
+          ? 'ไม่ได้รับอนุญาตให้ใช้กล้อง — เปิดสิทธิ์กล้องในเบราว์เซอร์ หรือกด "เลือกไฟล์" เพื่อเลือกภาพแทน'
+          : 'เปิดกล้องไม่สำเร็จ — กด "เลือกไฟล์" เพื่อเลือกภาพแทน');
       }
     })();
     return () => {

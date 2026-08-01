@@ -478,16 +478,12 @@ export default function CastForm({ onLog }) {
 
           {/* Mounted whatever the step is showing: the camera screen's own
               "เลือกไฟล์" fallback reaches this input through the same ref.
-              capture="environment" is what makes this fallback actually work
-              when the live preview doesn't: some in-app browsers (LINE's
-              LIFF webview on iOS has shipped versions like this) block or
-              never expose getUserMedia, but a file input with `capture` still
-              hands off to the OS's own native camera UI, which lives outside
-              whatever restricted the in-page video stream. Browsers that
-              don't understand `capture` just ignore it and show their normal
-              picker, so this never removes the gallery option, only adds
-              camera as a reliable first choice on mobile. */}
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden
+              No `capture` attribute — that was tried as a workaround for a
+              suspected getUserMedia gap in the LIFF-iOS webview, but the
+              live preview turned out to work fine, and `capture` forced this
+              button (labelled "choose a file") straight into the camera
+              instead of the actual file/photo picker it's supposed to open. */}
+          <input ref={fileRef} type="file" accept="image/*" hidden
                  onChange={(e) => handleFile(e.target.files?.[0])} />
 
           {!capture && manual ? (
