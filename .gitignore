@@ -1,3 +1,7 @@
 node_modules
 dist
 .vercel
+
+# Scratch space for rendering and screenshotting the UI while working on it.
+# Never part of a build — see the verification notes in recent commits.
+.probe
