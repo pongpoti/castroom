@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { preprocess, cropBox } from './lib/preprocess';
 import { readName } from './lib/ocr';
 import CameraFrame from './CameraFrame';
+import CastIcon from './CastIcons';
 import { CAST_TYPES, castLabel } from './lib/casts';
 
 /*
@@ -31,7 +32,11 @@ const STYLE = `
 .cf2 *{box-sizing:border-box}
 .cf2 :focus-visible{outline:2.5px solid var(--primary);outline-offset:2px}
 
-.cf2-hero{background:var(--primary);border-radius:0 0 28px 28px;
+/* #0F6B4A is a darkened pull from the same leaf-green swatch as --leaf —
+   dark enough for white text at 6.52:1, but distinct enough from --primary
+   to actually read as a gradient rather than a barely-there tint shift. */
+.cf2-hero{background:linear-gradient(135deg,var(--primary) 0%,#0F6B4A 100%);
+          border-radius:0 0 28px 28px;
           padding:22px 20px 26px;display:flex;align-items:center;gap:14px;
           box-shadow:0 4px 16px rgba(7,56,53,.18)}
 .cf2-hero-icon{width:44px;height:44px;flex:none;border-radius:14px;
@@ -103,13 +108,16 @@ const STYLE = `
 .cf2-status{font-size:13.5px;color:var(--primary);text-align:center;padding:10px 0;font-weight:500}
 
 .cf2-castgrid{display:flex;flex-wrap:wrap;gap:22px}
-.cf2-castbtn{width:fit-content;border:1.5px solid var(--border-strong);
+.cf2-castbtn{width:fit-content;min-width:168px;border:1.5px solid var(--border-strong);
             background:var(--surface);color:var(--ink);
-            border-radius:999px;padding:9px 18px;cursor:pointer;font-family:inherit;
-            font-size:13.5px;font-weight:500;text-align:center}
+            border-radius:999px;padding:8px 14px;cursor:pointer;font-family:inherit;
+            font-size:13.5px;font-weight:500;text-align:center;
+            display:inline-flex;align-items:center;justify-content:space-between;gap:10px}
 .cf2-castbtn:hover{border-color:var(--primary);color:var(--primary-700)}
 .cf2-castbtn.active{border-color:var(--primary);background:var(--primary);color:#fff;
                     font-weight:600;box-shadow:0 3px 10px rgba(7,56,53,.28)}
+.cf2-castbtn-icon{flex:none;display:flex;align-items:center;color:inherit;opacity:.8}
+.cf2-castbtn.active .cf2-castbtn-icon{opacity:1}
 
 /* One column per row on a phone: badges are easier to hit and read stacked
    than wrapped into a ragged multi-per-row grid at narrow widths. Each badge
@@ -377,17 +385,23 @@ export default function CastForm({ onLog }) {
           </div>
 
           <div className="cf2-castgrid">
-            {CAST_TYPES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`cf2-castbtn ${castItems.has(t.id) ? 'active' : ''}`}
-                aria-pressed={castItems.has(t.id)}
-                onClick={() => toggleCastType(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
+            {CAST_TYPES.map((t, i) => {
+              // Alternate which edge the icon sits at, badge by badge: right
+              // on the 1st, left on the 2nd, right on the 3rd, and so on.
+              const iconRight = i % 2 === 0;
+              const icon = <span className="cf2-castbtn-icon"><CastIcon id={t.id} /></span>;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`cf2-castbtn ${castItems.has(t.id) ? 'active' : ''}`}
+                  aria-pressed={castItems.has(t.id)}
+                  onClick={() => toggleCastType(t.id)}
+                >
+                  {iconRight ? <>{t.label}{icon}</> : <>{icon}{t.label}</>}
+                </button>
+              );
+            })}
           </div>
 
           <div className="cf2-chips">
