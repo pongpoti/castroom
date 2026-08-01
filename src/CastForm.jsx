@@ -2,38 +2,39 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { preprocess, cropBox } from './lib/preprocess';
 import { readName } from './lib/ocr';
 import CameraFrame from './CameraFrame';
-import { CAST_TYPES, castLabel } from './lib/casts';
+import CastDiagram from './CastDiagram';
+import { CAST_TYPES, castLabel, STANDALONE_CAST_IDS } from './lib/casts';
 
 /*
- * Palette taken from a reference outfit's three swatches — burgundy, khaki
- * and blush pink — rather than a generic UI-kit hue. Burgundy carries every
- * primary interactive/selected state; khaki and pink mark steps 2 and 3 so
- * the three sections stay visually distinct without needing saturated
- * "app" colors. Every text/fill pairing is checked against WCAG AA before
- * use: the darker "-700" of each hue is what ever carries text or sits on
- * white, the swatch tone itself is reserved for soft fills and large
- * decoration where nothing has to be read off it.
+ * Palette taken from a four-swatch reference: a pale yellow, a yellow-green,
+ * a mid green, and a near-black deep teal. The teal is the only swatch dark
+ * enough to carry text or sit under white (12.9:1) — it is the single color
+ * every interactive/selected/header surface agrees on. The three light
+ * swatches are luminance-close to white (1.1-1.9:1 against it) and are used
+ * only as soft tints, never for text: text on those tints is always the
+ * teal, checked at 6.9:1 or better in every case.
  *
- * The hero is deliberately plain — solid burgundy, no gradient, no
- * decorative blobs — the color varies through the page via the three
- * accents below it, not through the header.
+ * The hero stays plain per the last pass — solid teal, no gradient — but
+ * now curves at the bottom rather than ending in a hard edge.
  */
 const STYLE = `
 @import url('https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
-.cf2{--primary:#5A1E2C;--primary-700:#431521;--primary-100:#F3E7E9;
-     --pink:#F3D2D9;--pink-700:#93435A;--pink-100:#FBEAEE;
-     --khaki:#B6A587;--khaki-700:#6B5A3D;--khaki-100:#F1EBE0;
+.cf2{--primary:#073835;--primary-700:#052624;--primary-100:#E9F7ED;
+     --pale:#FAFFA3;--pale-100:#FCFFCE;
+     --moss:#C6E772;--moss-100:#EAF6CE;
+     --leaf:#66D47E;--leaf-100:#DCF5E2;
      --warn:#C2410C;--warn-soft:#FFEDD5;
      --ink:#181B24;--ink-2:#585F6E;
-     --surface:#FAF8F6;--card:#FFFFFF;--border:#E3E6ED;--border-strong:#8B95AC;
+     --surface:#F8FAF3;--card:#FFFFFF;--border:#E3E6ED;--border-strong:#7A9B93;
      font-family:'Mitr',system-ui,sans-serif;color:var(--ink);
      background:var(--surface);min-height:100vh;padding-bottom:100px}
 .cf2 *{box-sizing:border-box}
 .cf2 :focus-visible{outline:2.5px solid var(--primary);outline-offset:2px}
 
-.cf2-hero{background:var(--primary);
-          padding:20px 20px;display:flex;align-items:center;gap:14px}
+.cf2-hero{background:var(--primary);border-radius:0 0 28px 28px;
+          padding:22px 20px 26px;display:flex;align-items:center;gap:14px;
+          box-shadow:0 4px 16px rgba(7,56,53,.18)}
 .cf2-hero-icon{width:44px;height:44px;flex:none;border-radius:14px;
                background:rgba(255,255,255,.94);display:flex;
                align-items:center;justify-content:center}
@@ -49,13 +50,23 @@ const STYLE = `
 .cf2-step-n{width:26px;height:26px;border-radius:50%;background:var(--primary-100);
             color:var(--primary-700);font-weight:600;font-size:13px;flex:none;
             display:flex;align-items:center;justify-content:center}
-.cf2-step-n.pink{background:var(--pink-100);color:var(--pink-700)}
-.cf2-step-n.khaki{background:var(--khaki-100);color:var(--khaki-700)}
+.cf2-step-n.pale{background:var(--pale-100);color:var(--primary)}
+.cf2-step-n.moss{background:var(--moss-100);color:var(--primary)}
 .cf2-step-t{font-size:15.5px;font-weight:600}
 
-.cf2-date{width:100%;border:1.5px solid var(--border-strong);border-radius:12px;
+/* iOS Safari renders <input type="date"> as its own control with a fixed
+   minimum height and internal line-height; when the box didn't leave room
+   for that, the rendered value sat taller than the field and visually broke
+   out past the rounded border on top and bottom. appearance:none hands the
+   box model fully to this CSS, min-height matches what iOS actually needs,
+   and the value pseudo-element is pinned to left-align at normal line-height
+   instead of being centered against the native control's own metrics. */
+.cf2-date{-webkit-appearance:none;appearance:none;
+          width:100%;min-height:48px;box-sizing:border-box;
+          border:1.5px solid var(--border-strong);border-radius:12px;
           background:var(--surface);padding:12px 14px;font-family:inherit;
-          font-size:16px;font-weight:500;color:var(--ink)}
+          font-size:16px;font-weight:500;line-height:1.3;color:var(--ink)}
+.cf2-date::-webkit-date-and-time-value{text-align:left;min-height:20px}
 .cf2-date:focus-visible{outline:none;border-color:var(--primary);
                         box-shadow:0 0 0 3px var(--primary-100)}
 
@@ -99,7 +110,7 @@ const STYLE = `
             font-size:13.5px;font-weight:500;text-align:center}
 .cf2-castbtn:hover{border-color:var(--primary);color:var(--primary-700)}
 .cf2-castbtn.active{border-color:var(--primary);background:var(--primary);color:#fff;
-                    font-weight:600;box-shadow:0 3px 10px rgba(90,30,44,.28)}
+                    font-weight:600;box-shadow:0 3px 10px rgba(7,56,53,.28)}
 
 /* One column per row on a phone: badges are easier to hit and read stacked
    than wrapped into a ragged multi-per-row grid at narrow widths. Each badge
@@ -108,6 +119,20 @@ const STYLE = `
 @media (max-width:480px){
   .cf2-castgrid{flex-direction:column;align-items:center}
 }
+
+.cd{display:flex;flex-direction:column;align-items:center;margin-bottom:4px}
+.cd-svg{width:100%;max-width:230px;height:auto;touch-action:manipulation}
+.cd-shape{fill:var(--card);stroke:var(--border-strong);stroke-width:2.5;
+          transition:fill .12s ease,stroke .12s ease}
+.cd-shape.cd-static{fill:var(--surface);stroke:var(--border);pointer-events:none}
+.cd-shape.cd-big{stroke-width:2}
+.cd-zone{cursor:pointer}
+.cd-zone:hover:not(.active) .cd-shape{stroke:var(--primary)}
+.cd-zone.active .cd-shape{fill:var(--primary);stroke:var(--primary-700)}
+.cd-caption{font-size:11.5px;color:var(--ink-2);margin-top:8px;text-align:center;max-width:32ch}
+
+.cf2-standalone{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;
+                margin-top:16px;padding-top:16px;border-top:1px dashed var(--border)}
 
 .cf2-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;min-height:1px}
 .cf2-chip{display:inline-flex;align-items:center;gap:6px;background:var(--primary-100);
@@ -280,8 +305,8 @@ export default function CastForm({ onLog }) {
       <header className="cf2-hero">
         <div className="cf2-hero-icon">
           <svg width="24" height="24" viewBox="0 0 64 64" fill="none">
-            <rect x="10" y="24" width="44" height="20" rx="10" fill="#fff" stroke="#5A1E2C" strokeWidth="3.5" />
-            <path d="M18 24v20M28 24v20M38 24v20M48 24v20" stroke="#5A1E2C" strokeWidth="3.5" strokeLinecap="round" />
+            <rect x="10" y="24" width="44" height="20" rx="10" fill="#fff" stroke="#073835" strokeWidth="3.5" />
+            <path d="M18 24v20M28 24v20M38 24v20M48 24v20" stroke="#073835" strokeWidth="3.5" strokeLinecap="round" />
           </svg>
         </div>
         <div>
@@ -302,7 +327,7 @@ export default function CastForm({ onLog }) {
 
         <section className="cf2-card">
           <div className="cf2-step">
-            <span className="cf2-step-n pink">2</span>
+            <span className="cf2-step-n pale">2</span>
             <span className="cf2-step-t">ถ่ายรูปใบรับยา</span>
           </div>
 
@@ -361,12 +386,14 @@ export default function CastForm({ onLog }) {
 
         <section className="cf2-card">
           <div className="cf2-step">
-            <span className="cf2-step-n khaki">3</span>
+            <span className="cf2-step-n moss">3</span>
             <span className="cf2-step-t">ใส่เฝือกแบบไหน ?</span>
           </div>
 
-          <div className="cf2-castgrid">
-            {CAST_TYPES.map((t) => (
+          <CastDiagram selected={castItems} onToggle={toggleCastType} />
+
+          <div className="cf2-castgrid cf2-standalone">
+            {CAST_TYPES.filter((t) => STANDALONE_CAST_IDS.includes(t.id)).map((t) => (
               <button
                 key={t.id}
                 type="button"
