@@ -1,85 +1,135 @@
 /**
- * CastIcons.jsx — one small pictogram per cast type, styled to actually read
- * as a wrapped cast rather than an abstract capsule.
+ * CastIcons.jsx — one pictogram per cast type.
  *
- * A thin line is the limb. Where the cast sits, the line thickens into a
- * rounded shape with evenly spaced rings drawn across it — the same visual
- * cue the header's own bandage icon uses (a wrap of material has rings/
- * stripes where it overlaps itself), just oriented around a vertical limb
- * instead of a horizontal roll. Position and length of that wrapped segment
- * are what distinguish the ten icons, so the icon still carries the same
- * information the badge's name does.
+ * The thing that makes a cast recognisable is the limb it is on. Earlier
+ * versions drew the cast alone, as a capsule on a bare vertical line, and it
+ * read as a thermometer: a straight line carries no anatomy, so there was
+ * nothing for the cast to be a cast *of*. So each icon here starts from an
+ * actual silhouette — an arm bent at the elbow, a leg with a knee and a foot,
+ * a hand with fingers and a thumb — drawn faintly, and then lays the cast over
+ * the segment that type covers.
  *
- * Every stroke uses currentColor, so an icon matches its badge's default,
- * hover, and active (white-on-fill) state automatically.
+ * The cast is drawn deliberately much thicker than the limb underneath, which
+ * is what a cast looks like in life: a bulky sleeve swallowing a thin limb.
+ * Thin seams run across it at regular intervals, the way a bandage shows where
+ * each turn of the roll overlaps the last.
+ *
+ * Two colors do all the state handling. The sleeve is currentColor, so it
+ * follows the badge's text color through default, hover, and selected. The
+ * seams are painted in --icon-bg, which each badge sets to its own background,
+ * so they read as gaps cut out of the sleeve on any badge state without the
+ * icon needing to know which state it is in.
  */
 
-const STROKE = 2.6;
-const RING_STROKE = 1.6;
+const LIMB_W = 4.2;
+const LIMB_OPACITY = 0.3;
+const SEAMS = '1.4 3.8';
 
-/** The wrapped cast segment: a rounded capsule with horizontal wrap-rings. */
-function Wrap({ x, y, w, h, rings = 3 }) {
-  const step = h / (rings + 1);
-  return (
-    <g>
-      <rect x={x} y={y} width={w} height={h} rx={w / 2}
-        stroke="currentColor" strokeWidth={STROKE} fill="none" />
-      {Array.from({ length: rings }, (_, i) => y + step * (i + 1)).map((ry) => (
-        <line key={ry} x1={x + 1.5} y1={ry} x2={x + w - 1.5} y2={ry}
-          stroke="currentColor" strokeWidth={RING_STROKE} opacity=".7" />
-      ))}
-    </g>
-  );
+/** The limb under the cast. Group opacity so overlapping parts don't darken. */
+function Ghost({ children }) {
+  return <g opacity={LIMB_OPACITY}>{children}</g>;
 }
 
-function Limb({ wrapY, wrapH, wrapX = 11, wrapW = 6, rings }) {
+function Svg({ children }) {
   return (
-    <svg width="26" height="42" viewBox="0 0 26 42" fill="none" aria-hidden="true">
-      <line x1="13" y1="3" x2="13" y2="39" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" opacity=".4" />
-      <Wrap x={wrapX} y={wrapY} w={wrapW} h={wrapH} rings={rings} />
+    <svg width="34" height="38" viewBox="0 0 34 38" fill="none" aria-hidden="true">
+      {children}
     </svg>
   );
 }
 
-function Hand({ markX }) {
+/** A wrapped sleeve along `d`: solid stroke, then seams cut across it. */
+function Cast({ d, w = 9 }) {
   return (
-    <svg width="26" height="42" viewBox="0 0 26 42" fill="none" aria-hidden="true">
-      <line x1="13" y1="3" x2="13" y2="27" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" opacity=".4" />
-      <rect x="6" y="24" width="14" height="13" rx="6" stroke="currentColor" strokeWidth="1.8" fill="none" opacity=".4" />
-      <circle cx={markX} cy="30.5" r="4.6" stroke="currentColor" strokeWidth={STROKE} fill="none" />
-      <line x1={markX - 2.4} y1="30.5" x2={markX + 2.4} y2="30.5" stroke="currentColor" strokeWidth={RING_STROKE} opacity=".7" />
-    </svg>
+    <>
+      <path d={d} stroke="currentColor" strokeWidth={w}
+        strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path d={d} strokeWidth={w} strokeLinecap="butt" strokeDasharray={SEAMS}
+        fill="none" style={{ stroke: 'var(--icon-bg,#F8FAF3)' }} />
+    </>
   );
 }
 
-function Fingers({ count }) {
-  const xs = count === 2 ? [9, 17] : [13];
+/* ---- the three silhouettes ------------------------------------------- */
+
+/** Hip, knee, shin, ankle, foot. Toes stay clear of every leg cast. */
+function LegGhost() {
   return (
-    <svg width="26" height="42" viewBox="0 0 26 42" fill="none" aria-hidden="true">
-      {xs.map((x) => (
-        <g key={x}>
-          <line x1={x} y1="4" x2={x} y2="36" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" opacity=".4" />
-          <Wrap x={x - 3} y="10" w="6" h="18" rings={2} />
-        </g>
-      ))}
-      {count === 2 && (
-        <line x1="9" y1="19" x2="17" y2="19" stroke="currentColor" strokeWidth={RING_STROKE} opacity=".7" />
-      )}
-    </svg>
+    <Ghost>
+      <path d="M15 4 L15 19 L13 30.5 L22.5 32.5" stroke="currentColor"
+        strokeWidth={LIMB_W} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Ghost>
   );
 }
+
+/** Shoulder, elbow, forearm, hand — hanging and bent, as an arm is held. */
+function ArmGhost() {
+  return (
+    <Ghost>
+      <path d="M11 4 L10 22 L25 28" stroke="currentColor"
+        strokeWidth={LIMB_W} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <circle cx="27.6" cy="29" r="3.5" fill="currentColor" />
+    </Ghost>
+  );
+}
+
+/** Wrist, palm, four fingers, thumb out to the left. */
+function HandGhost() {
+  return (
+    <Ghost>
+      <path d="M17 4 L17 13" stroke="currentColor" strokeWidth="6"
+        strokeLinecap="round" fill="none" />
+      <rect x="9" y="11" width="16" height="13" rx="5.5" fill="currentColor" />
+      <path d="M9.6 16.4 L5.4 21.4" stroke="currentColor" strokeWidth="3.4"
+        strokeLinecap="round" fill="none" />
+      <path d="M11.5 22 L11.5 31.5 M15.5 22 L15.5 33 M19.5 22 L19.5 32 M23.5 22 L23.5 29.5"
+        stroke="currentColor" strokeWidth="3" strokeLinecap="round" fill="none" />
+    </Ghost>
+  );
+}
+
+/* ---- the ten types ---------------------------------------------------- */
 
 const ICONS = {
-  uSlab: () => <Limb wrapY={3} wrapH={11} rings={2} />,
-  longArm: () => <Limb wrapY={4} wrapH={32} rings={5} />,
-  shortArm: () => <Limb wrapY={24} wrapH={15} rings={2} />,
-  thumbSpica: () => <Hand markX={8} />,
-  ulnaGutter: () => <Hand markX={18} />,
-  longLeg: () => <Limb wrapY={4} wrapH={34} wrapX={10} wrapW={7} rings={5} />,
-  kneeSlab: () => <Limb wrapY={15} wrapH={12} wrapX={10} wrapW={7} rings={2} />,
-  shortLeg: () => <Limb wrapY={28} wrapH={12} wrapX={10} wrapW={7} rings={2} />,
-  buddy: () => <Fingers count={2} />,
-  fingerSplint: () => <Fingers count={1} />,
+  // Leg: thigh-to-foot, below-knee-to-foot, and the knee on its own.
+  longLeg: () => (
+    <Svg><LegGhost /><Cast d="M15 6.5 L15 19 L13 30.5 L20.5 32.1" /></Svg>
+  ),
+  shortLeg: () => (
+    <Svg><LegGhost /><Cast d="M14.5 22 L13 30.5 L20.5 32.1" /></Svg>
+  ),
+  kneeSlab: () => (
+    <Svg><LegGhost /><Cast d="M15 12.5 L15 19 L14.15 24" /></Svg>
+  ),
+
+  // Arm: over the elbow, forearm only, and the U wrapping the elbow itself.
+  longArm: () => (
+    <Svg><ArmGhost /><Cast d="M10.8 7 L10 22 L24 27.6" /></Svg>
+  ),
+  shortArm: () => (
+    <Svg><ArmGhost /><Cast d="M16 24.4 L24 27.6" /></Svg>
+  ),
+  uSlab: () => (
+    <Svg><ArmGhost /><Cast d="M11 14 L10 22 L17 24.8" /></Svg>
+  ),
+
+  // Hand: thumb side, little-finger side, taped pair, single finger.
+  thumbSpica: () => (
+    <Svg><HandGhost /><Cast d="M6 20.6 L10 16 L15.5 12.5 L17 5.5" w={7.5} /></Svg>
+  ),
+  ulnaGutter: () => (
+    <Svg><HandGhost /><Cast d="M21.5 29 L21.5 22 L18.5 14 L17 5.5" w={8.5} /></Svg>
+  ),
+  buddy: () => (
+    <Svg>
+      <HandGhost />
+      <Cast d="M14.5 26 L20.5 26" w={4.2} />
+      <Cast d="M14.5 31 L20.5 31" w={4.2} />
+    </Svg>
+  ),
+  fingerSplint: () => (
+    <Svg><HandGhost /><Cast d="M15.5 21 L15.5 31" w={6} /></Svg>
+  ),
 };
 
 export default function CastIcon({ id }) {
