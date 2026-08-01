@@ -23,7 +23,6 @@ const STYLE = `
 .lg-t{font-size:34px;font-weight:700;line-height:1.25}
 .lg-m{font-size:20px;line-height:1.6;max-width:34ch}
 .lg-hint{font-size:13.5px;line-height:1.7;max-width:34ch;opacity:.85}
-.lg-code{font-family:'IBM Plex Mono',monospace;font-size:12.5px;opacity:.7;margin-top:4px}
 .lg-btn{margin-top:6px;background:#fff;color:#06543A;border:none;border-radius:12px;
         padding:13px 26px;font-family:inherit;font-size:15.5px;font-weight:600;cursor:pointer}
 `;
@@ -60,11 +59,6 @@ const BLOCKED = {
 function Screen({ verdict, onRetry }) {
   const { title, message } = BLOCKED[verdict] ?? BLOCKED['auth-failed'];
   const retryable = verdict === 'auth-failed' || verdict === 'init-failed';
-  // The raw verdict string is diagnostic — useful when troubleshooting a
-  // stuck deploy (see docs/setup.md), not something an operator holding a
-  // phone outside the LINE app needs to see alongside a message that already
-  // says what to do.
-  const showCode = verdict !== 'external-browser';
   return (
     <div className="lg">
       <style>{STYLE}</style>
@@ -72,7 +66,6 @@ function Screen({ verdict, onRetry }) {
       <div className="lg-t">{title}</div>
       <div className="lg-m">{message}</div>
       {retryable && <button className="lg-btn" onClick={onRetry}>ลองใหม่</button>}
-      {showCode && <div className="lg-code">{verdict}</div>}
     </div>
   );
 }
