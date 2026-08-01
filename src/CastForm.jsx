@@ -107,12 +107,12 @@ const STYLE = `
 .cf2-err{font-size:13px;color:var(--warn);line-height:1.6;margin-top:10px;text-align:center}
 .cf2-status{font-size:13.5px;color:var(--primary);text-align:center;padding:10px 0;font-weight:500}
 
-.cf2-castgrid{display:flex;flex-wrap:wrap;gap:22px}
-.cf2-castbtn{width:fit-content;min-width:168px;border:1.5px solid var(--border-strong);
+.cf2-castgrid{display:flex;flex-wrap:wrap;gap:26px}
+.cf2-castbtn{width:fit-content;min-width:216px;border:1.5px solid var(--border-strong);
             background:var(--surface);color:var(--ink);
-            border-radius:999px;padding:8px 14px;cursor:pointer;font-family:inherit;
-            font-size:13.5px;font-weight:500;text-align:center;
-            display:inline-flex;align-items:center;justify-content:space-between;gap:10px}
+            border-radius:999px;padding:12px 20px;cursor:pointer;font-family:inherit;
+            font-size:16px;font-weight:500;text-align:center;
+            display:inline-flex;align-items:center;justify-content:space-between;gap:14px}
 .cf2-castbtn:hover{border-color:var(--primary);color:var(--primary-700)}
 .cf2-castbtn.active{border-color:var(--primary);background:var(--primary);color:#fff;
                     font-weight:600;box-shadow:0 3px 10px rgba(7,56,53,.28)}
