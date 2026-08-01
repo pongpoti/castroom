@@ -7,8 +7,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#06543A" />
-      <stop offset="1" stop-color="#12873C" />
+      <stop offset="0" stop-color="#08714E" />
+      <stop offset="1" stop-color="#16A248" />
     </linearGradient>
     <linearGradient id="bone" gradientUnits="userSpaceOnUse" x1="18" y1="8" x2="46" y2="56">
       <stop offset="0" stop-color="#FFFAF0" />

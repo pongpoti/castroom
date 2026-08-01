@@ -30,8 +30,8 @@ export default function BrandMark({ size = 48 }) {
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
       <defs>
         <linearGradient id={tile} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#06543A" />
-          <stop offset="1" stopColor="#12873C" />
+          <stop offset="0" stopColor="#08714E" />
+          <stop offset="1" stopColor="#16A248" />
         </linearGradient>
         <linearGradient id={bone} gradientUnits="userSpaceOnUse" x1="18" y1="8" x2="46" y2="56">
           <stop offset="0" stopColor="#FFFAF0" />
