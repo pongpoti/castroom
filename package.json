@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node test/ocr.test.mjs && node test/typhoon.test.mjs"
+    "test": "node test/ocr.test.mjs && node test/typhoon.test.mjs && node test/gate.test.mjs"
   },
   "dependencies": {
+    "@line/liff": "^2.29.2",
     "@zxing/library": "^0.23.0",
     "onnxruntime-web": "^1.27.0",
     "ppu-paddle-ocr": "^6.2.0",

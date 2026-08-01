@@ -112,6 +112,11 @@ const STYLE = `
 .cf2-flags{background:var(--warn-soft);border-radius:10px;padding:10px 14px;margin-top:12px}
 .cf2-flags li{font-size:12.5px;line-height:1.6;margin-left:14px;color:var(--warn)}
 .cf2-err{font-size:13px;color:var(--warn);line-height:1.6;margin-top:10px;text-align:center}
+/* Sits directly under the field it belongs to, left-aligned with the box, so
+   it reads as that field's problem rather than the form's. The soft variant is
+   the still-incomplete nudge, which is not yet a mistake. */
+.cf2-fielderr{font-size:13px;line-height:1.6;margin-top:6px;color:var(--warn);font-weight:500}
+.cf2-fielderr.soft{color:var(--ink-2);font-weight:400}
 .cf2-status{font-size:13.5px;color:var(--primary);text-align:center;padding:10px 0;font-weight:500}
 
 .cf2-castgrid{display:flex;flex-wrap:wrap;gap:18px 26px}
@@ -192,12 +197,20 @@ const STYLE = `
 // keystroke, so a pasted or mistyped non-digit — or an 8th digit — is
 // rejected with the same message everywhere rather than silently truncated.
 const HN_LEN = 7;
-function sanitizeHn(raw, onReject) {
+function sanitizeHn(raw) {
   const digits = raw.replace(/\D/g, '');
-  if (digits.length !== raw.length || digits.length > HN_LEN) {
-    onReject?.();
-  }
-  return digits.slice(0, HN_LEN);
+  // Report the reason, not just that something was wrong: "only digits" and
+  // "no more than 7" are different mistakes and the field says which.
+  const error = digits.length !== raw.length ? 'กรอกได้เฉพาะตัวเลข 0-9 เท่านั้น'
+    : digits.length > HN_LEN ? `HN ยาวเกิน — ต้องมี ${HN_LEN} หลัก`
+    : null;
+  return { value: digits.slice(0, HN_LEN), error };
+}
+
+/** What to say under the box about the value currently in it. */
+function hnHint(value) {
+  if (!value) return null;
+  return value.length < HN_LEN ? `ต้องมีให้ครบ ${HN_LEN} หลัก` : null;
 }
 
 function todayISO() {
@@ -218,6 +231,7 @@ export default function CastForm({ onLog }) {
   const [photoError, setPhotoError] = useState(null);
   const [capture, setCapture] = useState(null);
   const [hn, setHn] = useState('');
+  const [hnError, setHnError] = useState(null);
   const [name, setName] = useState('');
   const [camera, setCamera] = useState(false);
 
@@ -308,6 +322,7 @@ export default function CastForm({ onLog }) {
 
   const resetPhoto = () => {
     setCapture(null); setHn(''); setName(''); setPhotoError(null); setPhotoStage('idle');
+    setHnError(null);
     setManual(false);
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -316,7 +331,14 @@ export default function CastForm({ onLog }) {
     setCastCount(id, castItems.has(id) ? 0 : 1);
   };
 
-  const alertBadHn = () => window.alert('กรุณากรอก HN เป็นตัวเลข 0-9 เท่านั้น ไม่เกิน 7 หลัก');
+  // A rejected keystroke leaves a message under the box rather than a modal:
+  // the operator is mid-typing, and a dialog steals the keyboard to say
+  // something the field itself can say without interrupting anyone.
+  const changeHn = (raw) => {
+    const { value, error } = sanitizeHn(raw);
+    setHn(value);
+    setHnError(error);
+  };
 
   const photoBusy = photoStage === 'reading-barcode' || photoStage === 'reading-name';
   const photoStatus = photoStage === 'reading-barcode' ? 'กำลังอ่าน QR code…'
@@ -391,7 +413,14 @@ export default function CastForm({ onLog }) {
               <div className="cf2-field">
                 <div className="cf2-label"><span>HN</span></div>
                 <input className="cf2-input mono" value={hn} inputMode="numeric"
-                       onChange={(e) => setHn(sanitizeHn(e.target.value, alertBadHn))} aria-label="HN" />
+                       onChange={(e) => changeHn(e.target.value)} aria-label="HN"
+                       aria-invalid={Boolean(hnError)}
+                       aria-describedby={hnError || hnHint(hn) ? 'cf2-hn-msg' : undefined} />
+                {(hnError || hnHint(hn)) && (
+                  <div id="cf2-hn-msg" className={`cf2-fielderr ${hnError ? '' : 'soft'}`} role="status">
+                    {hnError ?? hnHint(hn)}
+                  </div>
+                )}
               </div>
               <div className="cf2-field">
                 <div className="cf2-label"><span>ชื่อ-สกุล</span></div>
@@ -399,7 +428,7 @@ export default function CastForm({ onLog }) {
                        onChange={(e) => setName(e.target.value)} aria-label="ชื่อ-สกุล" />
               </div>
               <button className="cf2-linkbtn"
-                      onClick={() => { setManual(false); setHn(''); setName(''); }}>
+                      onClick={() => { setManual(false); setHn(''); setName(''); setHnError(null); }}>
                 หรือถ่ายภาพ
               </button>
             </>
@@ -436,7 +465,14 @@ export default function CastForm({ onLog }) {
                   </span>
                 </div>
                 <input className="cf2-input mono" value={hn} inputMode="numeric"
-                       onChange={(e) => setHn(sanitizeHn(e.target.value, alertBadHn))} aria-label="HN" />
+                       onChange={(e) => changeHn(e.target.value)} aria-label="HN"
+                       aria-invalid={Boolean(hnError)}
+                       aria-describedby={hnError || hnHint(hn) ? 'cf2-hn-msg' : undefined} />
+                {(hnError || hnHint(hn)) && (
+                  <div id="cf2-hn-msg" className={`cf2-fielderr ${hnError ? '' : 'soft'}`} role="status">
+                    {hnError ?? hnHint(hn)}
+                  </div>
+                )}
               </div>
 
               <div className="cf2-field">

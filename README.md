@@ -129,6 +129,34 @@ answers 503 and the app falls back to the local model, which still reads the
 name but drops diacritics. `TYPHOON_MODEL` overrides the model id, which
 defaults to `typhoon-ocr`.
 
+### Access
+
+The app only runs as a LIFF app inside LINE, on a phone or tablet — an
+external browser and LINE's desktop client are both refused. Who may use it is
+a list of LINE user ids in `config/allowed-line-users.json`, checked by
+`api/auth.js` against the ID token LINE signed, never against a user id the
+browser claims.
+
+To add someone: have them message the LINE official account. `api/line-webhook.js`
+forwards their user id to Telegram; paste it into the allowlist and deploy.
+
+```
+VITE_LIFF_ID            build-time, the LIFF app id
+LINE_LIFF_CHANNEL_ID    checked as the ID token's audience
+SESSION_SECRET          HMAC key for the session cookie
+LINE_CHANNEL_SECRET     verifies x-line-signature on OA deliveries
+TELEGRAM_BOT_TOKEN      admin notification bot
+TELEGRAM_CHAT_ID        where enrolment ids are sent
+LINE_ALLOWED_USER_IDS   optional, merged with the JSON file
+```
+
+Without `VITE_LIFF_ID` the app shows a "not configured" screen rather than the
+form — it fails closed, so a misconfigured deploy is never an open one. For
+local work, `npm run dev` with `VITE_LIFF_DEV_BYPASS=1` skips the gate;
+`vite build` compiles that branch out, so it cannot exist in a deployed bundle.
+
+See `docs/google-sheets-backend.md` for how records will be persisted.
+
 The local model is no longer fetched on mount — it is tens of megabytes and
 most captures never need it. Move recognition into a Web Worker before
 production if the fallback path is expected to be common; the remote path does
