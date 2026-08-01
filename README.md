@@ -132,22 +132,25 @@ defaults to `typhoon-ocr`.
 ### Access
 
 The app only runs as a LIFF app inside LINE, on a phone or tablet — an
-external browser and LINE's desktop client are both refused. Who may use it is
-a list of LINE user ids in `config/allowed-line-users.json`, checked by
-`api/auth.js` against the ID token LINE signed, never against a user id the
-browser claims.
+external browser and LINE's desktop client are both refused. Who may use it
+is the `allowed_line_users` table in Neon, checked by `api/auth.js` against
+the ID token LINE signed, never against a user id the browser claims.
 
-To add someone: have them message the LINE official account. `api/line-webhook.js`
-forwards their user id to Telegram; paste it into the allowlist and deploy.
+To add someone: have them message the LINE official account. A two-line
+Telegram message arrives — their LINE user id, then their display name —
+with Accept/Reject buttons underneath. Tapping Accept inserts them into the
+table immediately, no deploy needed.
 
 ```
-VITE_LIFF_ID            build-time, the LIFF app id
-LINE_LIFF_CHANNEL_ID    checked as the ID token's audience
-SESSION_SECRET          HMAC key for the session cookie
-LINE_CHANNEL_SECRET     verifies x-line-signature on OA deliveries
-TELEGRAM_BOT_TOKEN      admin notification bot
-TELEGRAM_CHAT_ID        where enrolment ids are sent
-LINE_ALLOWED_USER_IDS   optional, merged with the JSON file
+VITE_LIFF_ID               build-time, the LIFF app id
+LINE_LIFF_CHANNEL_ID       checked as the ID token's audience
+LINE_CHANNEL_SECRET        verifies x-line-signature on OA deliveries
+LINE_CHANNEL_ACCESS_TOKEN  looks up a display name for the enrolment message
+SESSION_SECRET             HMAC key for the session cookie
+TELEGRAM_BOT_TOKEN         admin notification bot
+TELEGRAM_CHAT_ID           where enrolment messages are sent
+TELEGRAM_WEBHOOK_SECRET    verifies Accept/Reject callbacks are really from Telegram
+DATABASE_URL               Neon — also where the allowlist itself lives
 ```
 
 Without `VITE_LIFF_ID` the app shows a "not configured" screen rather than the
@@ -156,12 +159,11 @@ local work, `npm run dev` with `VITE_LIFF_DEV_BYPASS=1` skips the gate;
 `vite build` compiles that branch out, so it cannot exist in a deployed bundle.
 
 **[docs/setup.md](docs/setup.md) is the step-by-step guide** — two LINE
-channels, a Telegram bot, the environment variables, and how to get the first
-person onto the allowlist.
+channels, a Telegram bot, Neon, the environment variables, and how to get
+the first person onto the allowlist.
 
-See `docs/backend.md` for how submitted records are persisted: Neon
-(Postgres) as the source of truth, a Google Sheet as a best-effort mirror
-for staff who want to open a spreadsheet.
+See `docs/backend.md` for how submitted records are persisted (Neon,
+rate limited, no other store) and how the Telegram enrolment flow works.
 
 The local model is no longer fetched on mount — it is tens of megabytes and
 most captures never need it. Move recognition into a Web Worker before

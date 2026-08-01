@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node test/ocr.test.mjs && node test/typhoon.test.mjs && node test/gate.test.mjs && node test/log.test.mjs && node test/outbox.test.mjs"
+    "test": "node test/ocr.test.mjs && node test/typhoon.test.mjs && node test/gate.test.mjs && node test/validate.test.mjs && node test/outbox.test.mjs && node test/ratelimit.test.mjs && node test/allowlist.test.mjs && node test/telegram.test.mjs"
   },
   "dependencies": {
     "@line/liff": "^2.29.2",

@@ -2,11 +2,10 @@
 -- schema in docs/backend.md Decision 2. A visit with two cast types writes
 -- two rows sharing visit_id; every question this table gets asked
 -- ("how many short leg slabs last month") is an aggregate over cast_type,
--- which is one GROUP BY here and one SUMIF in the Sheets mirror.
+-- which is one GROUP BY away.
 --
--- Run this once against the Neon database before the first deploy that sets
--- DATABASE_URL — api/log.js does not create tables itself, the same way it
--- does not manage the Google Sheet's header row.
+-- Run this once against the Neon database before the first deploy that
+-- sets DATABASE_URL — api/log.js does not create tables itself.
 
 create table if not exists cast_log (
   id            bigserial primary key,
@@ -22,8 +21,8 @@ create table if not exists cast_log (
   app_version   text
 );
 
--- Dedupe lookups (Decision 4: at-least-once writes, deduped on read) and the
--- shift-date reports the sheet mirror exists to make easy.
+-- Dedupe lookups (Decision 4: at-least-once writes, deduped on read) and
+-- the shift-date reports this table exists to make easy.
 create index if not exists cast_log_visit_id_idx on cast_log (visit_id);
 create index if not exists cast_log_shift_date_idx on cast_log (shift_date);
 
@@ -34,3 +33,23 @@ create or replace view cast_log_deduped as
 select distinct on (visit_id, cast_type) *
 from cast_log
 order by visit_id, cast_type, id;
+
+-- api_rate_limit — the fixed-window counter behind src/lib/ratelimit.js.
+-- One row per limited key (currently "log:<ip>"); the window resets in
+-- place via the upsert in checkRateLimit rather than this table growing
+-- one row per request.
+create table if not exists api_rate_limit (
+  key          text primary key,
+  window_start timestamptz not null,
+  count        integer not null
+);
+
+-- allowed_line_users — the LIFF allowlist api/auth.js checks against,
+-- replacing the config/allowed-line-users.json file. Rows are added by an
+-- admin tapping "Accept" on the Telegram enrolment notification
+-- (api/telegram-webhook.js) — see docs/backend.md for the full flow.
+create table if not exists allowed_line_users (
+  line_user_id  text primary key,
+  display_name  text,
+  added_at      timestamptz not null default now()
+);
