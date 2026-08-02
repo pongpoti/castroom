@@ -81,16 +81,26 @@ const STYLE = `
 .cf2-date:focus-visible{outline:none;border-color:var(--primary);
                         box-shadow:0 0 0 3px var(--primary-100)}
 
-/* Doctor badges sit two to a row regardless of screen width — the label is
-   always just a first name, so a single column would waste half the card. */
-.cf2-doctorgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
-.cf2-docbtn{border:1.5px solid var(--border-strong);
-           background:var(--surface);color:var(--ink);
-           border-radius:999px;padding:10px 12px;cursor:pointer;font-family:inherit;
-           font-size:15px;font-weight:500;text-align:center}
-.cf2-docbtn:hover{border-color:var(--primary);color:var(--primary-700)}
-.cf2-docbtn.active{border-color:var(--primary);background:var(--primary);color:#fff;
-                   font-weight:600;box-shadow:0 3px 10px rgba(7,56,53,.28)}
+/* Doctor picker is a native <select> rather than a badge grid: one large,
+   high-contrast control reads far more easily for elderly staff than a
+   14-item grid of small pill buttons, and a dropdown scales to any list
+   length without the layout getting cramped. Sized well past the 44px
+   touch-target minimum and set in large, bold text for readability. */
+.cf2-doctorlabel{font-size:17px;font-weight:700;letter-spacing:normal;
+                 text-transform:none;color:var(--ink);margin-bottom:8px;display:block}
+.cf2-selectwrap{position:relative;margin-top:0}
+.cf2-doctorselect{-webkit-appearance:none;appearance:none;width:100%;
+                  border:2px solid var(--border-strong);border-radius:14px;
+                  background:var(--surface);color:var(--ink);font-family:inherit;
+                  padding:16px 46px 16px 18px;font-size:20px;font-weight:600;
+                  line-height:1.3;cursor:pointer}
+.cf2-doctorselect:hover{border-color:var(--primary)}
+.cf2-doctorselect:focus-visible{outline:none;border-color:var(--primary);
+                                box-shadow:0 0 0 4px var(--primary-100)}
+.cf2-selectwrap::after{content:'';position:absolute;right:20px;top:50%;
+                       width:12px;height:12px;border-right:3px solid var(--primary);
+                       border-bottom:3px solid var(--primary);
+                       transform:translateY(-70%) rotate(45deg);pointer-events:none}
 
 .cf2-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;
           gap:8px;min-height:140px;border:1.5px dashed var(--border-strong);border-radius:14px;
@@ -486,19 +496,19 @@ export default function CastForm({ onLog }) {
                  onChange={(e) => setDate(e.target.value)} />
 
           <div className="cf2-field">
-            <div className="cf2-label"><span>เลือกแพทย์</span></div>
-            <div className="cf2-doctorgrid">
-              {DOCTORS.map((d) => (
-                <button
-                  type="button"
-                  key={d.id}
-                  className={`cf2-docbtn ${doctorId === d.id ? 'active' : ''}`}
-                  aria-pressed={doctorId === d.id}
-                  onClick={() => setDoctorId(d.id)}
-                >
-                  {d.firstName}
-                </button>
-              ))}
+            <label className="cf2-doctorlabel" htmlFor="cf2-doctor-select">เลือกแพทย์</label>
+            <div className="cf2-selectwrap">
+              <select
+                id="cf2-doctor-select"
+                className="cf2-doctorselect"
+                value={doctorId ?? ''}
+                onChange={(e) => setDoctorId(e.target.value || null)}
+              >
+                <option value="" disabled>-- เลือกแพทย์ --</option>
+                {DOCTORS.map((d) => (
+                  <option key={d.id} value={d.id}>{d.fullName}</option>
+                ))}
+              </select>
             </div>
           </div>
         </section>
