@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, Fragment } from 'react';
 import { preprocess, cropBox } from './lib/preprocess';
 import { readName } from './lib/ocr';
 import CameraFrame from './CameraFrame';
@@ -250,14 +250,25 @@ const STYLE = `
   .cf2-entry.is-new::before{animation:none;opacity:.5;filter:blur(10px)}
 }
 
-.cf2-totop{position:fixed;right:16px;bottom:calc(96px + env(safe-area-inset-bottom));
-          z-index:11;display:flex;align-items:center;justify-content:center;gap:8px;
-          height:56px;padding:0 22px 0 18px;border-radius:999px;
-          background:#fff;border:2px solid var(--primary);color:var(--primary);
+/* Sits directly under the last submitted card rather than floating over
+   the page — its place in the list is what tells you it belongs to what's
+   above. The ongoing pulse is deliberately gentle: this button lives for
+   as long as the log does, so unlike the one-shot card glow it can't just
+   play once and settle — it has to stay legible without becoming noise. */
+.cf2-totop{width:100%;margin-top:2px;display:flex;align-items:center;justify-content:center;
+          gap:8px;height:56px;border:none;border-radius:14px;
+          background:var(--leaf);color:#05301A;
           font-family:inherit;font-size:17px;font-weight:700;cursor:pointer;
-          box-shadow:0 6px 20px rgba(7,56,53,.26)}
-.cf2-totop:active{background:var(--primary-100)}
+          animation:cf2-totop-glow 2.6s ease-in-out infinite}
+.cf2-totop:active{background:var(--moss)}
 .cf2-totop svg{flex:none}
+@keyframes cf2-totop-glow{
+  0%,100%{box-shadow:0 0 0 0 rgba(102,212,126,.5),0 2px 8px rgba(7,56,53,.16)}
+  50%{box-shadow:0 0 20px 7px rgba(102,212,126,.5),0 2px 8px rgba(7,56,53,.16)}
+}
+@media (prefers-reduced-motion: reduce){
+  .cf2-totop{animation:none;box-shadow:0 2px 8px rgba(7,56,53,.16)}
+}
 `;
 
 // HN at this hospital is always a 7-digit number. Both the manual-entry
@@ -316,13 +327,6 @@ export default function CastForm({ onLog }) {
   const [castItems, setCastItems] = useState(new Map());
   const [log, setLog] = useState([]);
   const [outboxPending, setOutboxPending] = useState(0);
-  const [showToTop, setShowToTop] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setShowToTop(window.scrollY > 320);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   const scrollToTop = () => {
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -718,44 +722,45 @@ export default function CastForm({ onLog }) {
           <section className="cf2-log">
             <div className="cf2-log-title">{log.length} รายการในรอบนี้</div>
             {log.map((r, i) => (
-              <div className={`cf2-entry ${i === 0 ? 'is-new' : ''}`} key={r.id}>
-                <div className="cf2-entry-top">
-                  <span>{r.date}</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {r.sync === 'pending' && <span className="cf2-sync pending">รอส่ง</span>}
-                    {r.sync === 'failed' && <span className="cf2-sync failed">ส่งไม่สำเร็จ</span>}
-                    <span className="cf2-entry-hn">{r.hn}</span>
-                  </span>
-                </div>
-                <div className="cf2-entry-name">{r.name}</div>
-                <div className="cf2-entry-doctor">{r.doctorName}</div>
-                <div className="cf2-entry-chips">
-                  {r.casts.map(({ id, count }) => (
-                    <span className="cf2-entry-chip" key={id}>
-                      {castLabel(id)}{count > 1 ? ` ×${count}` : ''}
+              <Fragment key={r.id}>
+                <div className={`cf2-entry ${i === 0 ? 'is-new' : ''}`}>
+                  <div className="cf2-entry-top">
+                    <span>{r.date}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {r.sync === 'pending' && <span className="cf2-sync pending">รอส่ง</span>}
+                      {r.sync === 'failed' && <span className="cf2-sync failed">ส่งไม่สำเร็จ</span>}
+                      <span className="cf2-entry-hn">{r.hn}</span>
                     </span>
-                  ))}
+                  </div>
+                  <div className="cf2-entry-name">{r.name}</div>
+                  <div className="cf2-entry-doctor">{r.doctorName}</div>
+                  <div className="cf2-entry-chips">
+                    {r.casts.map(({ id, count }) => (
+                      <span className="cf2-entry-chip" key={id}>
+                        {castLabel(id)}{count > 1 ? ` ×${count}` : ''}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+                {i === 0 && log.length > 1 && (
+                  <button
+                    type="button"
+                    className="cf2-totop"
+                    onClick={scrollToTop}
+                    aria-label="เลื่อนขึ้นบนสุด"
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor"
+                            strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <span>ขึ้นบน</span>
+                  </button>
+                )}
+              </Fragment>
             ))}
           </section>
         )}
       </div>
-
-      {showToTop && (
-        <button
-          type="button"
-          className="cf2-totop"
-          onClick={scrollToTop}
-          aria-label="เลื่อนขึ้นบนสุด"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor"
-                  strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span>ขึ้นบน</span>
-        </button>
-      )}
 
       <div className="cf2-bar">
         {outboxPending > 0 && (
