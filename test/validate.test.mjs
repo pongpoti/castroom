@@ -14,6 +14,7 @@ const VALID = {
   shift_date: '2026-08-01',
   hn: '1234567',
   name: 'สมชาย ใจดี',
+  doctor_id: 'doc01',
   source: 'manual',
   casts: [{ id: 'shortLeg', count: 2 }, { id: 'longLeg', count: 1 }],
 };
@@ -42,6 +43,9 @@ eq('rejects a non-numeric HN', validateLogPayload({ ...VALID, hn: '123456a' }, N
 eq('rejects a too-short name', validateLogPayload({ ...VALID, name: 'AB' }, NOW).error, 'invalid-name');
 eq('rejects a whitespace-only name', validateLogPayload({ ...VALID, name: '   ' }, NOW).error, 'invalid-name');
 eq('rejects an oversized name', validateLogPayload({ ...VALID, name: 'A'.repeat(121) }, NOW).error, 'invalid-name');
+
+eq('rejects a missing doctor_id', validateLogPayload({ ...VALID, doctor_id: undefined }, NOW).error, 'invalid-doctor-id');
+eq('rejects an unknown doctor_id', validateLogPayload({ ...VALID, doctor_id: 'doc99' }, NOW).error, 'invalid-doctor-id');
 
 eq('rejects an unknown source', validateLogPayload({ ...VALID, source: 'phone' }, NOW).error, 'invalid-source');
 

@@ -14,12 +14,19 @@ create table if not exists cast_log (
   shift_date    date not null,
   hn            text not null,
   patient_name  text not null,
+  doctor_name   text not null,
   cast_type     text not null,
   cast_label    text not null,
   count         integer not null check (count between 1 and 20),
   source        text not null check (source in ('qr', 'manual')),
   app_version   text
 );
+
+-- Run against a database created before doctor_name existed — a fresh
+-- `create table if not exists` above is a no-op there, so the column has to
+-- be added separately. Nullable because rows written before this change
+-- have no doctor on file.
+alter table cast_log add column if not exists doctor_name text;
 
 -- Dedupe lookups (Decision 4: at-least-once writes, deduped on read) and
 -- the shift-date reports this table exists to make easy.

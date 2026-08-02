@@ -63,6 +63,7 @@ the same reason `api/ocr.js` keeps the Typhoon key server-side.
 | `shift_date` | `2026-08-01` | The date the operator picked in step 1 |
 | `hn` | `1234567` | Exactly 7 digits, enforced by `validateLogPayload` |
 | `patient_name` / `cast_type` / `cast_label` / `count` | | |
+| `doctor_name` | `เฉลิมพล กินรี` | Full name, resolved server-side from the `doctor_id` badge the operator tapped |
 | `source` | `qr` \| `manual` | Whether the patient came from a scan or was typed |
 | `app_version` | `a1b2c3d` | `VERCEL_GIT_COMMIT_SHA`, short form |
 
