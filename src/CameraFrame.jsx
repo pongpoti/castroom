@@ -23,13 +23,10 @@ const STYLE = `
 .cf-corner.bl{bottom:-3px;left:-3px;border-right:none;border-top:none}
 .cf-corner.br{bottom:-3px;right:-3px;border-left:none;border-top:none}
 
-.cf-caption{position:absolute;left:0;right:0;text-align:center;color:#fff;
-            font-size:13.5px;line-height:1.55;text-shadow:0 1px 3px rgba(0,0,0,.85);
-            padding:0 20px;pointer-events:none}
 .cf-hint{position:absolute;left:0;right:0;display:flex;justify-content:center;
-         pointer-events:none;padding:0 16px}
-.cf-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;
-         border-radius:999px;font-size:13px;font-weight:600;
+         pointer-events:none;padding:0 20px}
+.cf-pill{display:inline-flex;align-items:center;gap:10px;padding:11px 18px;
+         border-radius:999px;font-size:18px;font-weight:600;text-align:center;
          background:rgba(20,22,26,.82);color:#fff;backdrop-filter:blur(6px)}
 .cf-pill.ready{background:rgba(22,101,52,.9)}
 .cf-pill.warn{background:rgba(146,64,14,.9)}
@@ -190,7 +187,7 @@ export default function CameraFrame({ onCapture, onCancel, onFallback }) {
   }, [onCapture]);
 
   const status = (() => {
-    if (!live) return { cls: '', text: 'เล็ง QR code และบรรทัดชื่อให้อยู่ในกรอบ' };
+    if (!live) return { cls: '', text: 'เล็งให้เห็นกรอบดำทั้ง 4 มุม ในใบรับยา' };
     if (live.unit < MIN_UNIT_PX) {
       return { cls: 'warn', text: `ไกลเกินไป (QR ${Math.round(live.unit)}px) — เข้าใกล้อีก` };
     }
@@ -228,11 +225,7 @@ export default function CameraFrame({ onCapture, onCancel, onFallback }) {
                   <span className="cf-corner tl" /><span className="cf-corner tr" />
                   <span className="cf-corner bl" /><span className="cf-corner br" />
                 </div>
-                <div className="cf-caption" style={{ top: guide.top + guide.h + 16 }}>
-                  วางกรอบล่างของใบบันทึกให้เต็มกรอบนี้ —
-                  ต้องเห็นทั้ง QR code และบรรทัด “ชื่อ-สกุลผู้ป่วย”
-                </div>
-                <div className="cf-hint" style={{ top: Math.max(12, guide.top - 46) }}>
+                <div className="cf-hint" style={{ top: guide.top + guide.h + 16 }}>
                   <span className={`cf-pill ${status.cls}`}>
                     <span className="cf-dot" />{status.text}
                   </span>
