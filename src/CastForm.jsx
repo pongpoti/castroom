@@ -742,7 +742,7 @@ export default function CastForm({ onLog }) {
                     ))}
                   </div>
                 </div>
-                {i === 0 && log.length > 1 && (
+                {i === 0 && (
                   <button
                     type="button"
                     className="cf2-totop"
