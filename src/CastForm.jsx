@@ -203,7 +203,7 @@ const STYLE = `
 .cf2-log{margin-top:4px}
 .cf2-log-title{font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:10px}
 .cf2-entry{background:var(--card);border:1px solid var(--border);
-          border-radius:14px;padding:14px 16px;margin-bottom:10px}
+          border-radius:14px;padding:14px 16px;margin-bottom:10px;position:relative}
 .cf2-entry-top{display:flex;justify-content:space-between;align-items:baseline;
                font-size:13px;color:var(--ink-2);margin-bottom:4px}
 .cf2-entry-name{font-size:15px;font-weight:600}
@@ -218,6 +218,46 @@ const STYLE = `
 .cf2-sync.pending{background:var(--pale-100);color:#8A6D1A}
 .cf2-sync.failed{background:var(--warn-soft);color:var(--warn)}
 .cf2-outbox-note{font-size:12.5px;color:var(--ink-2);text-align:center;padding:0 0 8px}
+
+/* The record just saved gets a halo that cycles through the app's own
+   four-swatch palette (pale → moss → leaf), then settles to a plain leaf
+   border once it's made its point — a logging screen with a permanent
+   pulse turns into noise. Because each new record is a fresh DOM node
+   (prepended, keyed by id), the animation always plays once from the
+   start; it never replays on unrelated re-renders. */
+.cf2-entry.is-new{border-color:var(--leaf)}
+.cf2-entry.is-new::before{
+  content:'';position:absolute;inset:-9px;border-radius:21px;
+  background:linear-gradient(120deg,var(--leaf),var(--moss),var(--pale),var(--leaf-100),var(--leaf));
+  background-size:300% 300%;filter:blur(14px);z-index:-1;pointer-events:none;
+  animation:cf2-glow-hue 2s ease-in-out 2, cf2-glow-fade 4s ease-out forwards;
+}
+.cf2-entry.is-new::after{
+  content:'ล่าสุด';position:absolute;top:-9px;left:14px;
+  background:var(--leaf);color:#05301A;font-size:11px;font-weight:700;
+  letter-spacing:.03em;padding:2px 9px;border-radius:999px;
+}
+@keyframes cf2-glow-hue{
+  0%,100%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+}
+@keyframes cf2-glow-fade{
+  0%{opacity:.9}
+  70%{opacity:.6}
+  100%{opacity:0}
+}
+@media (prefers-reduced-motion: reduce){
+  .cf2-entry.is-new::before{animation:none;opacity:.5;filter:blur(10px)}
+}
+
+.cf2-totop{position:fixed;right:16px;bottom:calc(96px + env(safe-area-inset-bottom));
+          z-index:11;display:flex;align-items:center;justify-content:center;gap:8px;
+          height:56px;padding:0 22px 0 18px;border-radius:999px;
+          background:#fff;border:2px solid var(--primary);color:var(--primary);
+          font-family:inherit;font-size:17px;font-weight:700;cursor:pointer;
+          box-shadow:0 6px 20px rgba(7,56,53,.26)}
+.cf2-totop:active{background:var(--primary-100)}
+.cf2-totop svg{flex:none}
 `;
 
 // HN at this hospital is always a 7-digit number. Both the manual-entry
@@ -276,6 +316,18 @@ export default function CastForm({ onLog }) {
   const [castItems, setCastItems] = useState(new Map());
   const [log, setLog] = useState([]);
   const [outboxPending, setOutboxPending] = useState(0);
+  const [showToTop, setShowToTop] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setShowToTop(window.scrollY > 320);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+  };
 
   const setCastCount = (id, count) => {
     setCastItems((prev) => {
@@ -665,8 +717,8 @@ export default function CastForm({ onLog }) {
         {log.length > 0 && (
           <section className="cf2-log">
             <div className="cf2-log-title">{log.length} รายการในรอบนี้</div>
-            {log.map((r) => (
-              <div className="cf2-entry" key={r.id}>
+            {log.map((r, i) => (
+              <div className={`cf2-entry ${i === 0 ? 'is-new' : ''}`} key={r.id}>
                 <div className="cf2-entry-top">
                   <span>{r.date}</span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -689,6 +741,21 @@ export default function CastForm({ onLog }) {
           </section>
         )}
       </div>
+
+      {showToTop && (
+        <button
+          type="button"
+          className="cf2-totop"
+          onClick={scrollToTop}
+          aria-label="เลื่อนขึ้นบนสุด"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor"
+                  strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span>ขึ้นบน</span>
+        </button>
+      )}
 
       <div className="cf2-bar">
         {outboxPending > 0 && (
