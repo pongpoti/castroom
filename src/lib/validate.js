@@ -9,6 +9,7 @@
  */
 
 import { CAST_TYPES } from './casts.js';
+import { DOCTORS } from './doctors.js';
 
 const HN_LEN = 7;
 const MAX_CASTS = 10;
@@ -18,6 +19,7 @@ const MIN_NAME = 3;
 const MAX_VISIT_ID = 64;
 
 const CAST_IDS = new Set(CAST_TYPES.map((t) => t.id));
+const DOCTOR_IDS = new Set(DOCTORS.map((d) => d.id));
 const SOURCES = new Set(['qr', 'manual']);
 
 /** A plain YYYY-MM-DD, and not implausibly far from today in either direction. */
@@ -39,7 +41,7 @@ export function validateLogPayload(body, now = new Date()) {
     return { ok: false, error: 'invalid-body' };
   }
 
-  const { visit_id: visitId, shift_date: shiftDate, hn, name, source, casts } = body;
+  const { visit_id: visitId, shift_date: shiftDate, hn, name, doctor_id: doctorId, source, casts } = body;
 
   if (typeof visitId !== 'string' || visitId.length === 0 || visitId.length > MAX_VISIT_ID) {
     return { ok: false, error: 'invalid-visit-id' };
@@ -49,6 +51,9 @@ export function validateLogPayload(body, now = new Date()) {
   }
   if (typeof hn !== 'string' || !/^\d{7}$/.test(hn)) {
     return { ok: false, error: 'invalid-hn' };
+  }
+  if (!DOCTOR_IDS.has(doctorId)) {
+    return { ok: false, error: 'invalid-doctor-id' };
   }
   const trimmedName = typeof name === 'string' ? name.trim() : '';
   if (trimmedName.length < MIN_NAME || trimmedName.length > MAX_NAME) {
@@ -82,6 +87,7 @@ export function validateLogPayload(body, now = new Date()) {
       shift_date: shiftDate,
       hn,
       name: trimmedName,
+      doctor_id: doctorId,
       source,
       casts: cleanCasts,
     },

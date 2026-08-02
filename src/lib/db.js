@@ -9,6 +9,7 @@
 
 import { neon } from '@neondatabase/serverless';
 import { castLabel } from './casts.js';
+import { doctorFullName } from './doctors.js';
 
 let client;
 
@@ -28,11 +29,12 @@ export function getSql() {
  * and others silently missing.
  */
 export async function insertCastLog(sql, entry, loggedAtISO, appVersion) {
+  const doctorName = doctorFullName(entry.doctor_id);
   const queries = entry.casts.map((c) => sql`
     insert into cast_log
-      (logged_at, visit_id, shift_date, hn, patient_name, cast_type, cast_label, count, source, app_version)
+      (logged_at, visit_id, shift_date, hn, patient_name, doctor_name, cast_type, cast_label, count, source, app_version)
     values
-      (${loggedAtISO}, ${entry.visit_id}, ${entry.shift_date}, ${entry.hn}, ${entry.name},
+      (${loggedAtISO}, ${entry.visit_id}, ${entry.shift_date}, ${entry.hn}, ${entry.name}, ${doctorName},
        ${c.id}, ${castLabel(c.id)}, ${c.count}, ${entry.source}, ${appVersion ?? null})
     returning id
   `);

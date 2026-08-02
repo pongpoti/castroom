@@ -4,6 +4,7 @@ import { readName } from './lib/ocr';
 import CameraFrame from './CameraFrame';
 import CastIcon from './CastIcons';
 import { CAST_TYPES, castLabel } from './lib/casts';
+import { DOCTORS, doctorFullName } from './lib/doctors';
 import BrandMark from './BrandMark';
 import * as outbox from './lib/outbox';
 
@@ -79,6 +80,17 @@ const STYLE = `
 .cf2-date::-webkit-date-and-time-value{text-align:left;min-height:20px}
 .cf2-date:focus-visible{outline:none;border-color:var(--primary);
                         box-shadow:0 0 0 3px var(--primary-100)}
+
+/* Doctor badges sit two to a row regardless of screen width — the label is
+   always just a first name, so a single column would waste half the card. */
+.cf2-doctorgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.cf2-docbtn{border:1.5px solid var(--border-strong);
+           background:var(--surface);color:var(--ink);
+           border-radius:999px;padding:10px 12px;cursor:pointer;font-family:inherit;
+           font-size:15px;font-weight:500;text-align:center}
+.cf2-docbtn:hover{border-color:var(--primary);color:var(--primary-700)}
+.cf2-docbtn.active{border-color:var(--primary);background:var(--primary);color:#fff;
+                   font-weight:600;box-shadow:0 3px 10px rgba(7,56,53,.28)}
 
 .cf2-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;
           gap:8px;min-height:140px;border:1.5px dashed var(--border-strong);border-radius:14px;
@@ -185,6 +197,7 @@ const STYLE = `
 .cf2-entry-top{display:flex;justify-content:space-between;align-items:baseline;
                font-size:13px;color:var(--ink-2);margin-bottom:4px}
 .cf2-entry-name{font-size:15px;font-weight:600}
+.cf2-entry-doctor{font-size:12.5px;color:var(--ink-2);margin-top:2px}
 .cf2-entry-hn{font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--primary)}
 .cf2-entry-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .cf2-entry-chip{background:var(--primary-100);color:var(--primary-700);border-radius:999px;
@@ -231,6 +244,7 @@ const ERRORS = {
 
 export default function CastForm({ onLog }) {
   const [date, setDate] = useState(todayISO());
+  const [doctorId, setDoctorId] = useState(null);
 
   const [photoStage, setPhotoStage] = useState('idle');
   const [photoError, setPhotoError] = useState(null);
@@ -350,7 +364,7 @@ export default function CastForm({ onLog }) {
   const photoStatus = photoStage === 'reading-barcode' ? 'กำลังอ่าน QR code…'
     : photoStage === 'reading-name' ? 'กำลังอ่านชื่อ…' : '';
 
-  const canSubmit = date && hn.trim().length === HN_LEN && name.trim().length >= 3
+  const canSubmit = date && doctorId && hn.trim().length === HN_LEN && name.trim().length >= 3
     && castItems.size > 0 && !photoBusy;
 
   // POSTs one queued visit. The outbox decides whether a failure here is
@@ -421,6 +435,7 @@ export default function CastForm({ onLog }) {
       date,
       hn: hn.trim(),
       name: name.trim(),
+      doctorName: doctorFullName(doctorId),
       casts,
       at: new Date().toISOString(),
       sync: 'pending',
@@ -430,6 +445,7 @@ export default function CastForm({ onLog }) {
       shift_date: date,
       hn: hn.trim(),
       name: name.trim(),
+      doctor_id: doctorId,
       source: manual ? 'manual' : 'qr',
       casts,
     });
@@ -468,6 +484,23 @@ export default function CastForm({ onLog }) {
           </div>
           <input type="date" className="cf2-date" value={date}
                  onChange={(e) => setDate(e.target.value)} />
+
+          <div className="cf2-field">
+            <div className="cf2-label"><span>เลือกแพทย์</span></div>
+            <div className="cf2-doctorgrid">
+              {DOCTORS.map((d) => (
+                <button
+                  type="button"
+                  key={d.id}
+                  className={`cf2-docbtn ${doctorId === d.id ? 'active' : ''}`}
+                  aria-pressed={doctorId === d.id}
+                  onClick={() => setDoctorId(d.id)}
+                >
+                  {d.firstName}
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section className="cf2-card">
@@ -633,6 +666,7 @@ export default function CastForm({ onLog }) {
                   </span>
                 </div>
                 <div className="cf2-entry-name">{r.name}</div>
+                <div className="cf2-entry-doctor">{r.doctorName}</div>
                 <div className="cf2-entry-chips">
                   {r.casts.map(({ id, count }) => (
                     <span className="cf2-entry-chip" key={id}>
