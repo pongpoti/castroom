@@ -26,7 +26,7 @@ const STYLE = `
 .cf-hint{position:absolute;left:0;right:0;display:flex;justify-content:center;
          pointer-events:none;padding:0 20px}
 .cf-pill{display:inline-flex;align-items:center;gap:10px;padding:11px 18px;
-         border-radius:999px;font-size:18px;font-weight:600;text-align:center;
+         border-radius:999px;font-size:15px;font-weight:600;text-align:center;
          background:rgba(20,22,26,.82);color:#fff;backdrop-filter:blur(6px)}
 .cf-pill.ready{background:rgba(22,101,52,.9)}
 .cf-pill.warn{background:rgba(146,64,14,.9)}
